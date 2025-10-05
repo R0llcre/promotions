@@ -2,8 +2,8 @@
 Test Factory to make fake objects for testing
 """
 
-import factory
 from datetime import date, timedelta
+import factory
 from service.models import Promotion
 
 
@@ -20,5 +20,5 @@ class PromotionFactory(factory.Factory):
     promotion_type = factory.Faker("random_element", elements=("Percentage off", "Buy One Get One", "Fixed amount off"))
     value = factory.Faker("random_int", min=1, max=99)
     product_id = factory.Faker("random_int", min=1, max=1000)
-    start_date = factory.LazyFunction(lambda: date.today())
+    start_date = factory.LazyFunction(date.today())
     end_date = factory.LazyFunction(lambda: date.today() + timedelta(days=30))

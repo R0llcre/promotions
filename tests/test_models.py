@@ -22,8 +22,8 @@ Test cases for Promotion Model
 import os
 import logging
 from unittest import TestCase
-from wsgi import app
 from datetime import date
+from wsgi import app
 from service.models import Promotion, DataValidationError, db
 from tests.factories import PromotionFactory
 
