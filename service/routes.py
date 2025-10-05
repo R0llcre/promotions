@@ -33,10 +33,14 @@ from service.common import status  # HTTP Status Codes
 @app.route("/")
 def index():
     """Root URL response"""
-    return (
-        "Reminder: return some useful information in json format about the service here",
-        status.HTTP_200_OK,
-    )
+    return jsonify(
+        name="Promotions Service",
+        version="1.0.0",
+        description="RESTful service for managing promotions",
+        paths={
+            "promotions": "/promotions",
+        }
+    ), status.HTTP_200_OK
 
 
 ######################################################################

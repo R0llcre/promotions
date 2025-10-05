@@ -71,5 +71,10 @@ class TestYourResourceService(TestCase):
         """It should call the home page"""
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["name"], "Promotions Service")
+        self.assertEqual(data["version"], "1.0.0")
+        self.assertEqual(data["description"], "RESTful service for managing promotions")
+        self.assertIn("promotions", data["paths"])
 
     # Todo: Add your test cases here...
