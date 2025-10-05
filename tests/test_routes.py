@@ -15,7 +15,7 @@
 ######################################################################
 
 """
-TestYourResourceModel API Service Test Suite
+Promotion API Service Test Suite
 """
 
 # pylint: disable=duplicate-code
@@ -24,18 +24,20 @@ import logging
 from unittest import TestCase
 from wsgi import app
 from service.common import status
-from service.models import db, YourResourceModel
+from service.models import Promotion, db
+from tests.factories import PromotionFactory
 
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql+psycopg://postgres:postgres@localhost:5432/testdb"
 )
+BASE_URL = "/promotions"
 
 
 ######################################################################
 #  T E S T   C A S E S
 ######################################################################
 # pylint: disable=too-many-public-methods
-class TestYourResourceService(TestCase):
+class TestPromotionService(TestCase):
     """REST API Server Tests"""
 
     @classmethod
@@ -56,7 +58,7 @@ class TestYourResourceService(TestCase):
     def setUp(self):
         """Runs before each test"""
         self.client = app.test_client()
-        db.session.query(YourResourceModel).delete()  # clean up the last tests
+        db.session.query(Promotion).delete()  # clean up the last tests
         db.session.commit()
 
     def tearDown(self):
@@ -64,7 +66,7 @@ class TestYourResourceService(TestCase):
         db.session.remove()
 
     ######################################################################
-    #  P L A C E   T E S T   C A S E S   H E R E
+    #  T E S T   C A S E S
     ######################################################################
 
     def test_index(self):
@@ -77,4 +79,79 @@ class TestYourResourceService(TestCase):
         self.assertEqual(data["description"], "RESTful service for managing promotions")
         self.assertIn("promotions", data["paths"])
 
-    # Todo: Add your test cases here...
+    # ----------------------------------------------------------
+    # TEST CREATE
+    # ----------------------------------------------------------
+
+    def test_create_promotion(self):
+        """It should Create a new Promotion"""
+        test_promotion = PromotionFactory()
+        logging.debug("Test Promotion: %s", test_promotion.serialize())
+        response = self.client.post(BASE_URL, json=test_promotion.serialize())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Make sure location header is set
+        location = response.headers.get("Location", None)
+        self.assertIsNotNone(location)
+
+        # Check the data is correct
+        new_promotion = response.get_json()
+        self.assertEqual(new_promotion["name"], test_promotion.name)
+        self.assertEqual(new_promotion["promotion_type"], test_promotion.promotion_type)
+        self.assertEqual(new_promotion["value"], test_promotion.value)
+        self.assertEqual(new_promotion["product_id"], test_promotion.product_id)
+
+        # Check that the location header was correct
+        response = self.client.get(location)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_promotion = response.get_json()
+        self.assertEqual(new_promotion["name"], test_promotion.name)
+        self.assertEqual(new_promotion["promotion_type"], test_promotion.promotion_type)
+        self.assertEqual(new_promotion["value"], test_promotion.value)
+        self.assertEqual(new_promotion["product_id"], test_promotion.product_id)
+
+######################################################################
+#  T E S T   S A D   P A T H S
+######################################################################
+
+
+class TestSadPaths(TestCase):
+    """Test REST Exception Handling"""
+
+    def setUp(self):
+        """Runs before each test"""
+        self.client = app.test_client()
+
+    def test_create_promotion_no_data(self):
+        """It should not Create a Promotion with missing data"""
+        response = self.client.post(BASE_URL, json={})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_promotion_no_content_type(self):
+        """It should not Create a Promotion with no content type"""
+        response = self.client.post(BASE_URL)
+        self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    def test_create_promotion_wrong_content_type(self):
+        """It should not Create a Promotion with the wrong content type"""
+        response = self.client.post(BASE_URL, data="hello", content_type="text/html")
+        self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    def test_create_promotion_bad_value(self):
+        """It should not Create a Promotion with bad value data"""
+        test_promotion = PromotionFactory()
+        logging.debug(test_promotion)
+        # change value to a string
+        test_promotion.value = "bad_value"
+        response = self.client.post(BASE_URL, json=test_promotion.serialize())
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_promotion_bad_product_id(self):
+        """It should not Create a Promotion with bad product_id data"""
+        promotion = PromotionFactory()
+        logging.debug(promotion)
+        # change product_id to a bad string
+        test_promotion = promotion.serialize()
+        test_promotion["product_id"] = "not_a_number"  # invalid product_id
+        response = self.client.post(BASE_URL, json=test_promotion)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
