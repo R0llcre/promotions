@@ -1,32 +1,31 @@
-# service/models.py
-# -*- coding: utf-8 -*-
 """
-Promotion data model and data operations
-"""
+Models for YourResourceModel
 
-from __future__ import annotations
+All of the models are stored in this module
+"""
 
 import logging
 from datetime import date
-from typing import List, Optional
-
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import delete
 
-# SQLAlchemy database instance (initialized by the app in create_app)
+logger = logging.getLogger("flask.app")
+
+# Create the SQLAlchemy object to be initialized later in init_db()
 db = SQLAlchemy()
 
 
 class DataValidationError(Exception):
-    """Used for data validation errors (e.g., during deserialization)"""
-    pass
+    """Used for an data validation errors when deserializing"""
 
 
-class Promotion(db.Model):  # type: ignore[name-defined]
-    """Promotion Model"""
+class Promotion(db.Model):
+    """
+    Class that represents a promotion
+    """
 
-    __tablename__ = "promotions"
-
+    ##################################################
+    # Table Schema
+    ##################################################
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(63), nullable=False)
     promotion_type = db.Column(db.String(63), nullable=False)
@@ -34,125 +33,82 @@ class Promotion(db.Model):  # type: ignore[name-defined]
     product_id = db.Column(db.Integer, nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
+    # Database auditing fields
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    last_updated = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
 
-    def __repr__(self) -> str:  # pragma: no cover - for debugging only
+    ##################################################
+    # INSTANCE METHODS
+    ##################################################
+
+    def __repr__(self):
         return f"<Promotion {self.name} id=[{self.id}]>"
 
-    # ------------------------------------------------------------------
-    # Basic Persistence Operations
-    # ------------------------------------------------------------------
-    def create(self) -> None:
-        """Insert the current object into the database"""
-        logging.debug("Creating %r", self)
-        db.session.add(self)
-        db.session.commit()
-
-    def update(self) -> None:
-        """Update the current object (by its own ID)"""
-        logging.debug("Updating %r", self)
-        if not self.id:
-            raise DataValidationError("Update called with empty id")
-        # Optional safeguard: check existence for better test coverage
-        if Promotion.find(self.id) is None:
-            raise DataValidationError(f"Promotion with id {self.id} does not exist")
-        db.session.commit()
-
-    def delete(self) -> None:
-        """Delete the current object from the database"""
-        logging.debug("Deleting %r", self)
-        db.session.delete(self)
-        db.session.commit()
-
-    # ------------------------------------------------------------------
-    # Query / Utility Methods
-    # ------------------------------------------------------------------
-    @classmethod
-    def all(cls) -> List["Promotion"]:
-        """Return all Promotion records"""
-        return cls.query.all()
-
-    @classmethod
-    def find(cls, by_id: int) -> Optional["Promotion"]:
-        """Find a Promotion by its ID"""
-        return cls.query.get(by_id)
-
-    @classmethod
-    def find_by_name(cls, name: str) -> List["Promotion"]:
-        """Find promotions by exact name match"""
-        return cls.query.filter_by(name=name).all()
-
-    @classmethod
-    def remove_all(cls) -> None:
-        """Completely clear the promotions table
-
-        First performs a bulk delete; if for any reason (e.g., transaction/connection state)
-        the table still has remaining rows, perform a hard reset (drop_all + create_all)
-        to guarantee the table is empty.
+    def create(self):
         """
-        logging.debug("Removing all rows from %s", cls.__tablename__)
-        # 1) Regular bulk delete
-        db.session.execute(delete(cls))
-        db.session.commit()
+        Creates a YourResourceModel to the database
+        """
+        logger.info("Creating %s", self.name)
+        self.id = None  # pylint: disable=invalid-name
+        try:
+            db.session.add(self)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error("Error creating record: %s", self)
+            raise DataValidationError(e) from e
 
-        # 2) Fallback check: ensure the table is truly empty
-        remain = cls.query.count()
-        if remain != 0:
-            logging.warning(
-                "Table %s still has %d rows after delete(); performing hard reset",
-                cls.__tablename__,
-                remain,
-            )
-            db.session.remove()
-            db.drop_all()
-            db.create_all()
+    def update(self):
+        """
+        Updates a YourResourceModel to the database
+        """
+        logger.info("Saving %s", self.name)
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error("Error updating record: %s", self)
+            raise DataValidationError(e) from e
 
-    # ------------------------------------------------------------------
-    # Serialization / Deserialization
-    # ------------------------------------------------------------------
-    def serialize(self) -> dict:
-        """Convert the object into a dictionary (JSON-friendly)"""
+    def delete(self):
+        """Removes a YourResourceModel from the data store"""
+        logger.info("Deleting %s", self.name)
+        try:
+            db.session.delete(self)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error("Error deleting record: %s", self)
+            raise DataValidationError(e) from e
+
+    def serialize(self):
+        """Serializes a promotion into a dictionary"""
         return {
             "id": self.id,
             "name": self.name,
             "promotion_type": self.promotion_type,
             "value": self.value,
             "product_id": self.product_id,
-            "start_date": (
-                self.start_date.isoformat()
-                if isinstance(self.start_date, date)
-                else self.start_date
-            ),
-            "end_date": (
-                self.end_date.isoformat()
-                if isinstance(self.end_date, date)
-                else self.end_date
-            ),
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None
         }
 
-    def deserialize(self, data: dict) -> "Promotion":
-        """Convert a dictionary into a Promotion object (with strict validation)
-
-        Required fields:
-        - name: str
-        - promotion_type: str
-        - value: int
-        - product_id: int
-        - start_date: ISO8601 string, e.g., '2025-01-01'
-        - end_date: ISO8601 string, e.g., '2025-12-31'
+    def deserialize(self, data: dict):
+        """
+        Deserializes a promotion from a dictionary
+        Args:
+            data (dict): A dictionary containing the promotion data
         """
         try:
             self.name = data["name"]
             self.promotion_type = data["promotion_type"]
-
-            # Validate value
             if isinstance(data["value"], int):
                 self.value = data["value"]
             else:
                 raise DataValidationError(
-                    "Invalid type for integer [value]: " + str(type(data["value"]))
+                    "Invalid type for integer [value]: "
+                    + str(type(data["value"]))
                 )
-
-            # Validate product_id
             if isinstance(data["product_id"], int):
                 self.product_id = data["product_id"]
             else:
@@ -160,18 +116,40 @@ class Promotion(db.Model):  # type: ignore[name-defined]
                     "Invalid type for integer [product_id]: "
                     + str(type(data["product_id"]))
                 )
-
-            # Validate date format (must be ISO8601)
             self.start_date = date.fromisoformat(data["start_date"])
             self.end_date = date.fromisoformat(data["end_date"])
-
         except AttributeError as error:
             raise DataValidationError("Invalid attribute: " + error.args[0]) from error
         except KeyError as error:
-            # Missing required field
             raise DataValidationError("Invalid promotion: missing " + error.args[0]) from error
-        except ValueError as error:
-            # Invalid date format, etc.
-            raise DataValidationError("Invalid date format: " + str(error)) from error
-
+        except (TypeError, ValueError) as error:
+            raise DataValidationError(
+                "Invalid promotion: body of request contained bad or no data " + str(error)
+            ) from error
         return self
+
+    ##################################################
+    # CLASS METHODS
+    ##################################################
+
+    @classmethod
+    def all(cls):
+        """Returns all of the YourResourceModels in the database"""
+        logger.info("Processing all YourResourceModels")
+        return cls.query.all()
+
+    @classmethod
+    def find(cls, by_id):
+        """Finds a YourResourceModel by it's ID"""
+        logger.info("Processing lookup for id %s ...", by_id)
+        return cls.query.session.get(cls, by_id)
+
+    @classmethod
+    def find_by_name(cls, name):
+        """Returns all YourResourceModels with the given name
+
+        Args:
+            name (string): the name of the YourResourceModels you want to match
+        """
+        logger.info("Processing name query for %s ...", name)
+        return cls.query.filter(cls.name == name)
