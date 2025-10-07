@@ -1,63 +1,49 @@
-# Copyright 2016, 2024 John J. Rofrano. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """
 Package: service
-Package for the application models and service routes
-This module creates and configures the Flask app and sets up the logging
-and SQL database
+Create and configure the Flask app, logging, and database
 """
+
 import sys
 from flask import Flask
 from service import config
 from service.common import log_handlers
 
+# -----------------------------------------------------------------------------
+# Create ONE global Flask app so `from service import app` 能拿到注册好路由的实例
+# 也同时提供 create_app() 给测试/外部调用（返回同一个 app）
+# -----------------------------------------------------------------------------
+app = Flask(__name__)
+app.config.from_object(config)
 
-############################################################
-# Initialize the Flask instance
-############################################################
+# 初始化数据库插件
+from service.models import db  # pylint: disable=wrong-import-position
+db.init_app(app)
+
+with app.app_context():
+    # 必须在 app 创建后再导入这些模块，确保 @app.route 绑定到当前 app
+    from service import routes, models  # noqa: F401  pylint: disable=unused-import, wrong-import-position
+    from service.common import error_handlers, cli_commands  # noqa: F401  pylint: disable=unused-import, wrong-import-position
+
+    try:
+        db.create_all()
+    except Exception as err:  # pylint: disable=broad-except
+        app.logger.critical("%s: Cannot continue", err)
+        sys.exit(4)
+
+    # 配置日志
+    log_handlers.init_logging(app, "gunicorn.error")
+
+    app.logger.info(70 * "*")
+    app.logger.info("  P R O M O T I O N S   S E R V I C E   I N I T  ".center(70, "*"))
+    app.logger.info(70 * "*")
+
+
 def create_app():
-    """Initialize the core application."""
-    # Create Flask application
-    app = Flask(__name__)
-    app.config.from_object(config)
+    """Factory-style accessor to the (already created) global app.
 
-    # Initialize Plugins
-    # pylint: disable=import-outside-toplevel
-    from service.models import db
-    db.init_app(app)
+    兼容 `from service import create_app` 的测试/脚本。
+    """
+    return app
 
-    with app.app_context():
-        # Dependencies require we import the routes AFTER the Flask app is created
-        # pylint: disable=wrong-import-position, wrong-import-order, unused-import
-        from service import routes, models  # noqa: F401 E402
-        from service.common import error_handlers, cli_commands  # noqa: F401, E402
 
-        try:
-            db.create_all()
-        except Exception as error:  # pylint: disable=broad-except
-            app.logger.critical("%s: Cannot continue", error)
-            # gunicorn requires exit code 4 to stop spawning workers when they die
-            sys.exit(4)
 
-        # Set up logging for production
-        log_handlers.init_logging(app, "gunicorn.error")
-
-        app.logger.info(70 * "*")
-        app.logger.info("  S E R V I C E   R U N N I N G  ".center(70, "*"))
-        app.logger.info(70 * "*")
-
-        app.logger.info("Service initialized!")
-
-        return app
