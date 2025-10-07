@@ -1,15 +1,16 @@
 # tests/test_routes_crud_extra.py
-# 额外路由覆盖测试：GET/LIST/PUT/DELETE + 405
+# Extra route coverage tests: GET / LIST / PUT / DELETE / 405
 
 from service.common import status
 from service import create_app
 from service.models import Promotion
 
-# 每个模块自己创建 app，避免和课程测试互相影响
+# Each module creates its own app instance to avoid interference with course tests
 flask_app = create_app()
 
+
 def setup_function():
-    # 清库（根据你们模型的方法名择一使用）
+    """Clear the database before each test"""
     if hasattr(Promotion, "remove_all"):
         with flask_app.app_context():
             Promotion.remove_all()
@@ -17,14 +18,15 @@ def setup_function():
         with flask_app.app_context():
             Promotion.reset()
 
+
 def _mk(client, **override):
-    """创建一条合法的 Promotion 并返回 id"""
+    """Create a valid Promotion and return its ID"""
     data = {
         "name": "BF",
         "promotion_type": "Discount",
         "value": 50,
         "product_id": 123,
-        # 你的 models.deserialize 要求必须要有日期：
+        # Your models.deserialize requires date fields:
         "start_date": "2025-01-01",
         "end_date": "2025-12-31",
     }
@@ -35,7 +37,9 @@ def _mk(client, **override):
     assert "id" in payload
     return payload["id"]
 
+
 def test_get_promotion_after_create():
+    """Verify retrieving a created promotion"""
     client = flask_app.test_client()
     pid = _mk(client)
     r = client.get(f"/promotions/{pid}")
@@ -43,7 +47,9 @@ def test_get_promotion_after_create():
     body = r.get_json()
     assert body["id"] == pid and body["name"] == "BF"
 
+
 def test_list_promotions_returns_array_and_counts():
+    """GET /promotions should return an array of promotions"""
     client = flask_app.test_client()
     _ = _mk(client)
     _ = _mk(client, name="X")
@@ -52,10 +58,12 @@ def test_list_promotions_returns_array_and_counts():
     body = r.get_json()
     assert isinstance(body, list) and len(body) >= 2
 
+
 def test_update_promotion_changes_fields():
+    """PUT /promotions/<id> should update fields"""
     client = flask_app.test_client()
     pid = _mk(client)
-    # 你的 deserialize 是“全量更新”模型：PUT 里也要给齐所有必填字段（含日期）
+    # Your deserialize performs a full update; all required fields (including dates) must be provided
     r = client.put(
         f"/promotions/{pid}",
         json={
@@ -71,7 +79,9 @@ def test_update_promotion_changes_fields():
     body = r.get_json()
     assert body["name"] == "Updated" and float(body["value"]) == 99.0
 
+
 def test_delete_then_get_404():
+    """DELETE /promotions/<id> should remove the record"""
     client = flask_app.test_client()
     pid = _mk(client)
     r = client.delete(f"/promotions/{pid}")
@@ -79,11 +89,11 @@ def test_delete_then_get_404():
     r = client.get(f"/promotions/{pid}")
     assert r.status_code == status.HTTP_404_NOT_FOUND
 
+
 def test_method_not_allowed_returns_json():
-    """触发 405，覆盖 JSON 错误处理"""
+    """Trigger 405 Method Not Allowed to cover JSON error handling"""
     client = flask_app.test_client()
-    r = client.put("/promotions")  # 未定义的 PUT /promotions → 405
+    r = client.put("/promotions")  # PUT /promotions is not defined → should return 405
     assert r.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
     body = r.get_json()
     assert "error" in body and "message" in body
-

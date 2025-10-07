@@ -9,16 +9,16 @@ from service.models import Promotion
 
 
 def test_get_empty_list_returns_200_and_empty_array():
-    """当没有任何记录时，GET /promotions 返回空数组并 200"""
+    """GET /promotions returns an empty array and 200 when there is no record"""
     client = flask_app.test_client()
 
-    # 必须在 app_context 下清库，否则 remove_all 不会真正执行
+    # Must clear the table inside app_context; otherwise remove_all won't actually execute
     try:
         with flask_app.app_context():
             if hasattr(Promotion, "remove_all"):
                 Promotion.remove_all()
     except Exception:  # noqa: BLE001
-        # 没有 remove_all 也不阻塞测试
+        # If remove_all is not implemented, don't fail the test
         pass
 
     resp = client.get("/promotions")
@@ -29,7 +29,7 @@ def test_get_empty_list_returns_200_and_empty_array():
 
 
 def test_update_nonexistent_returns_404():
-    """更新不存在的 id → 404"""
+    """Updating a non-existent id should return 404"""
     client = flask_app.test_client()
     payload = {
         "name": "Updated",
@@ -44,17 +44,20 @@ def test_update_nonexistent_returns_404():
 
 
 def test_delete_nonexistent_returns_404():
-    """删除不存在的 id → 404"""
+    """Deleting a non-existent id should return 404"""
     client = flask_app.test_client()
     resp = client.delete("/promotions/999999")
     assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 def test_internal_server_error_returns_json():
-    """构造一个会抛异常的路径来触发 500，覆盖 500 JSON 错误处理
-    通过对模型层打补丁（让 Promotion.find 抛 RuntimeError），
-    触发 error_handlers 的 500 分支，而不需要在运行时动态加路由。
-    注意：测试里需要暂时关闭异常传播（TESTING/PROPAGATE_EXCEPTIONS），否则 Flask 会把异常抛到测试进程而不是返回 500。
+    """Trigger a 500 to cover JSON 500 handler using a patched model method.
+
+    We patch Promotion.find to raise RuntimeError so the error_handlers 500 branch
+    is exercised without dynamically adding routes at runtime.
+
+    NOTE: Temporarily disable exception propagation (TESTING / PROPAGATE_EXCEPTIONS)
+    so Flask returns 500 instead of re-raising to the test process.
     """
     client = flask_app.test_client()
 
@@ -78,10 +81,10 @@ def test_internal_server_error_returns_json():
             flask_app.config["PROPAGATE_EXCEPTIONS"] = prev_propagate
 
 
-# ------- 额外增加两个过滤分支用例，提高覆盖率 -------
+# ------- Additional filter cases to increase coverage -------
 
 def _mk(client, **override):
-    """创建一条合法的 Promotion 并返回 id"""
+    """Create a valid Promotion and return its id"""
     data = {
         "name": "BF",
         "promotion_type": "Discount",
@@ -97,9 +100,9 @@ def _mk(client, **override):
 
 
 def test_list_filter_by_name_no_match():
-    """带 name 查询参数但没有匹配项 → 返回空数组"""
+    """GET /promotions?name=... with no match should return empty array"""
     client = flask_app.test_client()
-    # 保证至少存在一条非匹配数据
+    # Ensure there is at least one non-matching record
     _mk(client, name="SomethingElse")
 
     resp = client.get("/promotions", query_string={"name": "NotExistName"})
@@ -110,7 +113,7 @@ def test_list_filter_by_name_no_match():
 
 
 def test_list_filter_by_name_match():
-    """带 name 查询参数且有匹配项 → 返回包含该项"""
+    """GET /promotions?name=... with a match should include that item"""
     client = flask_app.test_client()
     target_name = "FilterMe"
     pid = _mk(client, name=target_name)

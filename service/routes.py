@@ -18,7 +18,7 @@
 Promotion Service
 
 This service implements a REST API that allows you to
-Create, Read, Update, Delete, and List Promotions
+Create, Read, Update, Delete, and List Promotions.
 """
 
 from flask import jsonify, request, url_for, abort
@@ -38,7 +38,7 @@ def index():
         version="1.0.0",
         description="RESTful service for managing promotions",
         paths={
-            # 测试期望的 key 叫 "promotions"
+            # Expected key name by tests is "promotions"
             "promotions": "/promotions"
         },
     ), status.HTTP_200_OK
@@ -49,7 +49,7 @@ def index():
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
-    """Returns a list of all Promotions"""
+    """Return a list of all Promotions"""
     app.logger.info("Request for promotion list")
     promotions = Promotion.all()
     results = [promo.serialize() for promo in promotions]
@@ -67,7 +67,10 @@ def get_promotions(promotion_id):
     promo = Promotion.find(promotion_id)
     if not promo:
         app.logger.warning("Promotion id [%s] not found", promotion_id)
-        abort(status.HTTP_404_NOT_FOUND, description=f"Promotion with id={promotion_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            description=f"Promotion with id={promotion_id} not found",
+        )
     return jsonify(promo.serialize()), status.HTTP_200_OK
 
 
@@ -76,7 +79,7 @@ def get_promotions(promotion_id):
 ######################################################################
 @app.route("/promotions", methods=["POST"])
 def create_promotions():
-    """Create a Promotion"""
+    """Create a new Promotion"""
     app.logger.info("Request to create a Promotion")
     check_content_type("application/json")
 
@@ -89,7 +92,11 @@ def create_promotions():
     app.logger.info("Promotion with id [%s] created", promotion.id)
 
     location_url = url_for("get_promotions", promotion_id=promotion.id, _external=True)
-    return jsonify(promotion.serialize()), status.HTTP_201_CREATED, {"Location": location_url}
+    return (
+        jsonify(promotion.serialize()),
+        status.HTTP_201_CREATED,
+        {"Location": location_url},
+    )
 
 
 ######################################################################
@@ -103,18 +110,22 @@ def update_promotions(promotion_id):
 
     promo = Promotion.find(promotion_id)
     if not promo:
-        abort(status.HTTP_404_NOT_FOUND, description=f"Promotion with id={promotion_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            description=f"Promotion with id={promotion_id} not found",
+        )
 
     data = request.get_json()
     app.logger.info("Processing update: %s", data)
 
-    # 防止请求体里带 id 覆盖
+    # Prevent overwriting the id field if provided in the request
     if isinstance(data, dict):
         data.pop("id", None)
 
     promo.deserialize(data)
     promo.id = promotion_id
-    # 适配不同模型实现：有 update() 用 update()，否则用 save()
+
+    # Support multiple model implementations: use update() if available, else save()
     if hasattr(promo, "update"):
         promo.update()
     elif hasattr(promo, "save"):
@@ -134,7 +145,10 @@ def delete_promotions(promotion_id):
     promo = Promotion.find(promotion_id)
     if not promo:
         app.logger.warning("Promotion id [%s] not found", promotion_id)
-        abort(status.HTTP_404_NOT_FOUND, description=f"Promotion with id={promotion_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            description=f"Promotion with id={promotion_id} not found",
+        )
 
     promo.delete()
     app.logger.info("Promotion id [%s] deleted", promotion_id)
@@ -145,11 +159,17 @@ def delete_promotions(promotion_id):
 # U T I L I T Y   F U N C T I O N S
 ######################################################################
 def check_content_type(content_type):
-    """Checks that the media type is correct"""
+    """Ensure that the request has the correct Content-Type header"""
     if "Content-Type" not in request.headers:
         app.logger.error("No Content-Type specified.")
-        abort(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Content-Type must be {content_type}")
+        abort(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            f"Content-Type must be {content_type}",
+        )
 
     if request.headers["Content-Type"] != content_type:
         app.logger.error("Invalid Content-Type: %s", request.headers["Content-Type"])
-        abort(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Content-Type must be {content_type}")
+        abort(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            f"Content-Type must be {content_type}",
+        )
