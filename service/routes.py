@@ -33,14 +33,17 @@ from service.common import status  # HTTP Status Codes
 @app.route("/")
 def index():
     """Root URL response"""
-    return jsonify(
-        name="Promotions Service",
-        version="1.0.0",
-        description="RESTful service for managing promotions",
-        paths={
-            "promotions": "/promotions",
-        }
-    ), status.HTTP_200_OK
+    return (
+        jsonify(
+            name="Promotions Service",
+            version="1.0.0",
+            description="RESTful service for managing promotions",
+            paths={
+                "promotions": "/promotions",
+            },
+        ),
+        status.HTTP_200_OK,
+    )
 
 
 ######################################################################
@@ -51,9 +54,30 @@ def index():
 # LIST ALL PETS
 ######################################################################
 
+
 ######################################################################
-# READ A PET
+# READ A PROMOTION
 ######################################################################
+@app.route("/promotions/<int:promotion_id>", methods=["GET"])
+def get_promotions(promotion_id):
+    """
+    Retrieve a single Promotion
+
+    This endpoint will return a Promotion based on it's id
+    """
+    app.logger.info("Request to Retrieve a promotion with id [%s]", promotion_id)
+
+    # Attempt to find the Promotion and abort if not found
+    promotion = Promotion.find(promotion_id)
+    if not promotion:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Promotion with id '{promotion_id}' was not found.",
+        )
+
+    app.logger.info("Returning promotion: %s", promotion.name)
+    return jsonify(promotion.serialize()), status.HTTP_200_OK
+
 
 ######################################################################
 # CREATE A NEW PROMOTION
@@ -79,7 +103,12 @@ def create_promotions():
 
     # Return the location of the new Promotion
     location_url = url_for("get_promotions", promotion_id=promotion.id, _external=True)
-    return jsonify(promotion.serialize()), status.HTTP_201_CREATED, {"Location": location_url}
+    return (
+        jsonify(promotion.serialize()),
+        status.HTTP_201_CREATED,
+        {"Location": location_url},
+    )
+
 
 ######################################################################
 # UPDATE A NEW PROMOTION

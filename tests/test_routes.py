@@ -82,7 +82,6 @@ class TestPromotionService(TestCase):
     # ----------------------------------------------------------
     # TEST CREATE
     # ----------------------------------------------------------
-
     def test_create_promotion(self):
         """It should Create a new Promotion"""
         test_promotion = PromotionFactory()
@@ -109,6 +108,7 @@ class TestPromotionService(TestCase):
         self.assertEqual(new_promotion["promotion_type"], test_promotion.promotion_type)
         self.assertEqual(new_promotion["value"], test_promotion.value)
         self.assertEqual(new_promotion["product_id"], test_promotion.product_id)
+
 
 ######################################################################
 #  T E S T   S A D   P A T H S
