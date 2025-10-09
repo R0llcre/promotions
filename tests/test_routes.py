@@ -109,6 +109,26 @@ class TestPromotionService(TestCase):
         self.assertEqual(new_promotion["value"], test_promotion.value)
         self.assertEqual(new_promotion["product_id"], test_promotion.product_id)
 
+    # ----------------------------------------------------------
+    # TEST READ
+    # ----------------------------------------------------------
+    def test_get_promotion(self):
+        """It should Get a single Promotion"""
+        # get the id of a promotion
+        test_promotion = self._create_promotions(1)[0]
+        response = self.client.get(f"{BASE_URL}/{test_promotion.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["name"], test_promotion.name)
+
+    def test_get_promotion_not_found(self):
+        """It should not Get a Promotion thats not found"""
+        response = self.client.get(f"{BASE_URL}/0")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        data = response.get_json()
+        logging.debug("Response data = %s", data)
+        self.assertIn("was not found", data["message"])
+
 
 ######################################################################
 #  T E S T   S A D   P A T H S
