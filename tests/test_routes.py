@@ -65,6 +65,22 @@ class TestPromotionService(TestCase):
         """This runs after each test"""
         db.session.remove()
 
+    ############################################################
+    # Utility function to bulk create promotions
+    ############################################################
+    def _create_promotions(self, count: int = 1) -> list:
+        """Factory method to create promotions in bulk"""
+        promotions = []
+        for _ in range(count):
+            test_promotion = PromotionFactory()
+            response = self.client.post(BASE_URL, json=test_promotion.serialize())
+            self.assertEqual(
+                response.status_code, status.HTTP_201_CREATED, "Could not create test promotion"
+            )
+            new_promotion = response.get_json()
+            test_promotion.id = new_promotion["id"]
+            promotions.append(test_promotion)
+        return promotions
     ######################################################################
     #  T E S T   C A S E S
     ######################################################################
