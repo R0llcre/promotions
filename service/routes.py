@@ -26,8 +26,6 @@ from flask import current_app as app  # Import Flask application
 from service.models import Promotion
 from service.common import status  # HTTP Status Codes
 
-BASE_URL = "/promotions"
-
 
 ######################################################################
 # GET INDEX
