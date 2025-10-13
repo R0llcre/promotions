@@ -65,6 +65,22 @@ class TestPromotionService(TestCase):
         """This runs after each test"""
         db.session.remove()
 
+    ############################################################
+    # Utility function to bulk create promotions
+    ############################################################
+    def _create_promotions(self, count: int = 1) -> list:
+        """Factory method to create promotions in bulk"""
+        promotions = []
+        for _ in range(count):
+            test_promotion = PromotionFactory()
+            response = self.client.post(BASE_URL, json=test_promotion.serialize())
+            self.assertEqual(
+                response.status_code, status.HTTP_201_CREATED, "Could not create test promotion"
+            )
+            new_promotion = response.get_json()
+            test_promotion.id = new_promotion["id"]
+            promotions.append(test_promotion)
+        return promotions
     ######################################################################
     #  T E S T   C A S E S
     ######################################################################
@@ -139,6 +155,24 @@ class TestPromotionService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
         self.assertEqual(len(data), 5)
+    # ----------------------------------------------------------
+    # TEST DELETE
+    # ----------------------------------------------------------
+    def test_delete_promotion(self):
+        """It should Delete a Promotion"""
+        test_promotion = self._create_promotions(1)[0]
+        response = self.client.delete(f"{BASE_URL}/{test_promotion.id}")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(len(response.data), 0)
+        # make sure they are deleted
+        response = self.client.get(f"{BASE_URL}/{test_promotion.id}")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_non_existing_promotion(self):
+        """It should Delete a Promotion even if it doesn't exist"""
+        response = self.client.delete(f"{BASE_URL}/0")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(len(response.data), 0)
 
 
 ######################################################################

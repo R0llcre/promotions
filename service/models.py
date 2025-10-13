@@ -46,7 +46,7 @@ class Promotion(db.Model):
 
     def create(self):
         """
-        Creates a YourResourceModel to the database
+        Creates a Promotion to the database
         """
         logger.info("Creating %s", self.name)
         self.id = None  # pylint: disable=invalid-name
@@ -71,7 +71,7 @@ class Promotion(db.Model):
             raise DataValidationError(e) from e
 
     def delete(self):
-        """Removes a YourResourceModel from the data store"""
+        """Removes a Promotion from the data store"""
         logger.info("Deleting %s", self.name)
         try:
             db.session.delete(self)
@@ -134,22 +134,22 @@ class Promotion(db.Model):
 
     @classmethod
     def all(cls):
-        """Returns all of the YourResourceModels in the database"""
-        logger.info("Processing all YourResourceModels")
+        """Returns all of the Promotions in the database"""
+        logger.info("Processing all Promotions")
         return cls.query.all()
 
     @classmethod
     def find(cls, by_id):
-        """Finds a YourResourceModel by it's ID"""
+        """Finds a Promotion by it's ID"""
         logger.info("Processing lookup for id %s ...", by_id)
         return cls.query.session.get(cls, by_id)
 
     @classmethod
     def find_by_name(cls, name):
-        """Returns all YourResourceModels with the given name
+        """Returns all Promotions with the given name
 
         Args:
-            name (string): the name of the YourResourceModels you want to match
+            name (string): the name of the Promotion you want to match
         """
         logger.info("Processing name query for %s ...", name)
         return cls.query.filter(cls.name == name)
