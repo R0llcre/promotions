@@ -26,6 +26,8 @@ from flask import current_app as app  # Import Flask application
 from service.models import Promotion
 from service.common import status  # HTTP Status Codes
 
+BASE_URL = "/promotions"
+
 
 ######################################################################
 # GET INDEX
@@ -50,9 +52,39 @@ def index():
 #  R E S T   A P I   E N D P O I N T S
 ######################################################################
 
+
 ######################################################################
-# LIST ALL PETS
+# LIST ALL PROMOTIONS
 ######################################################################
+@app.route("/promotions", methods=["GET"])
+def list_pets():
+    """Returns all of the Promotions"""
+    app.logger.info("Request for promotion list")
+
+    promotions = []
+
+    # Parse any arguments from the query string
+    product = request.args.get("product")
+    number = request.args.get("number")
+    id = request.args.get("id")
+
+    if product:
+        app.logger.info("Find by category: %s", product)
+        promotions = Promotion.find_by_category(product)
+    elif number:
+        app.logger.info("Find by name: %s", number)
+        promotions = Promotion.find_by_name(number)
+    elif id:
+        app.logger.info("Find by id: %s", id)
+        # create enum from string
+        promotions = Promotion.find_by_id(id[id.upper()])
+    else:
+        app.logger.info("Find all")
+        promotions = Promotion.all()
+
+    results = [promotion.serialize() for promotion in promotions]
+    app.logger.info("Returning %d promotions", len(results))
+    return jsonify(results), status.HTTP_200_OK
 
 
 ######################################################################
