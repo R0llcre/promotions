@@ -111,12 +111,28 @@ def create_promotions():
 
 
 ######################################################################
-# UPDATE A NEW PROMOTION
+# UPDATE A PROMOTION
 ######################################################################
 
 ######################################################################
-# DELETE A NEW PROMOTION
+# DELETE A PROMOTION
 ######################################################################
+@app.route("/promotions/<int:promotion_id>", methods=["DELETE"])
+def delete_promotions(promotion_id):
+    """
+    Delete a Promotion
+    This endpoint will delete a Promotion based on the id specified in the path
+    """
+    app.logger.info("Request to Delete a promotion with id [%s]", promotion_id)
+
+    # Delete the Promotion if it exists
+    promotion = Promotion.find(promotion_id)
+    if promotion:
+        app.logger.info("promotion with ID: %d found.", promotion.id)
+        promotion.delete()
+
+    app.logger.info("promotion with ID: %d delete complete.", promotion_id)
+    return {}, status.HTTP_204_NO_CONTENT
 
 ######################################################################
 # U T I L I T Y   F U N C T I O N S

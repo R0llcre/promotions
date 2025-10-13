@@ -69,8 +69,17 @@ class TestCaseBase(TestCase):
 # pylint: disable=too-many-public-methods
 
 
-class TestPromotionModel(TestCase):
+class TestPromotionModel(TestCaseBase):
     """Test Cases for Promotion Model"""
+
+    def test_delete_a_promotion(self):
+        """It should Delete a Promotion"""
+        promotion = PromotionFactory()
+        promotion.create()
+        self.assertEqual(len(Promotion.all()), 1)
+        # delete the promotion and make sure it isn't in the database
+        promotion.delete()
+        self.assertEqual(len(Promotion.all()), 0)
 
     def test_serialize_a_promotion(self):
         """It should serialize a Promotion"""
