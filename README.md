@@ -50,7 +50,7 @@ The Promotion model includes:
   3. Run the service: `flask run`
   4. Run tests: `make test`
 
-## Testing
+## Test
 
 Run the full test suite with coverage:
   
@@ -59,6 +59,13 @@ make test
 ```
 
 Expected coverage: 95%+
+
+## CRUD  Screenshots
+
+![Create](images/create.png)
+![Read](images/read.png)
+![Update](images/update.png)
+![Delete](images/delete.png)
 
 ## License
 
