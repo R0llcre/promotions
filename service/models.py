@@ -35,7 +35,9 @@ class Promotion(db.Model):
     end_date = db.Column(db.Date, nullable=False)
     # Database auditing fields
     created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-    last_updated = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
+    last_updated = db.Column(
+        db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False
+    )
 
     ##################################################
     # INSTANCE METHODS
@@ -60,9 +62,11 @@ class Promotion(db.Model):
 
     def update(self):
         """
-        Updates a YourResourceModel to the database
+        Updates a Promotion to the database
         """
         logger.info("Saving %s", self.name)
+        if not self.id:
+            raise DataValidationError("Update called with empty ID field")
         try:
             db.session.commit()
         except Exception as e:
@@ -90,7 +94,7 @@ class Promotion(db.Model):
             "value": self.value,
             "product_id": self.product_id,
             "start_date": self.start_date.isoformat() if self.start_date else None,
-            "end_date": self.end_date.isoformat() if self.end_date else None
+            "end_date": self.end_date.isoformat() if self.end_date else None,
         }
 
     def deserialize(self, data: dict):
@@ -106,8 +110,7 @@ class Promotion(db.Model):
                 self.value = data["value"]
             else:
                 raise DataValidationError(
-                    "Invalid type for integer [value]: "
-                    + str(type(data["value"]))
+                    "Invalid type for integer [value]: " + str(type(data["value"]))
                 )
             if isinstance(data["product_id"], int):
                 self.product_id = data["product_id"]
@@ -121,10 +124,13 @@ class Promotion(db.Model):
         except AttributeError as error:
             raise DataValidationError("Invalid attribute: " + error.args[0]) from error
         except KeyError as error:
-            raise DataValidationError("Invalid promotion: missing " + error.args[0]) from error
+            raise DataValidationError(
+                "Invalid promotion: missing " + error.args[0]
+            ) from error
         except (TypeError, ValueError) as error:
             raise DataValidationError(
-                "Invalid promotion: body of request contained bad or no data " + str(error)
+                "Invalid promotion: body of request contained bad or no data "
+                + str(error)
             ) from error
         return self
 
@@ -153,3 +159,30 @@ class Promotion(db.Model):
         """
         logger.info("Processing name query for %s ...", name)
         return cls.query.filter(cls.name == name)
+
+    @classmethod
+    def find_by_category(cls, category):
+        """Returns all Promotions in a category (using product_id as category)
+        Args:
+            category: the product_id/category of the Promotions you want to match
+        """
+        logger.info("Processing category query for %s ...", category)
+        try:
+            product_id = int(category)
+            return cls.query.filter(cls.product_id == product_id)
+        except ValueError:
+            return cls.query.filter(False)  # Return empty result for invalid product_id
+
+    @classmethod
+    def find_by_id(cls, promotion_id):
+        """Returns all Promotions with the given id (single result in list)
+        Args:
+            promotion_id: the id of the Promotion you want to match
+        """
+        logger.info("Processing id query for %s ...", promotion_id)
+        try:
+            pid = int(promotion_id)
+            promotion = cls.query.session.get(cls, pid)
+            return [promotion] if promotion else []
+        except (ValueError, TypeError):
+            return []

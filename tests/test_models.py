@@ -22,6 +22,7 @@ Test cases for Promotion Model
 import os
 import logging
 from unittest import TestCase
+from unittest.mock import patch
 from datetime import date
 from wsgi import app
 from service.models import Promotion, DataValidationError, db
@@ -63,6 +64,7 @@ class TestCaseBase(TestCase):
         """This runs after each test"""
         db.session.remove()
 
+
 ######################################################################
 #  P R O M O T I O N   M O D E L   T E S T   C A S E S
 ######################################################################
@@ -71,6 +73,29 @@ class TestCaseBase(TestCase):
 
 class TestPromotionModel(TestCaseBase):
     """Test Cases for Promotion Model"""
+
+    def test_update_a_promotion(self):
+        """It should Update a Promotion"""
+        promotion = PromotionFactory()
+        promotion.create()
+        self.assertIsNotNone(promotion.id)
+        # Change it and save it
+        original_id = promotion.id
+        promotion.name = "Updated Name"
+        promotion.update()
+        self.assertEqual(promotion.id, original_id)
+        self.assertEqual(promotion.name, "Updated Name")
+        # Fetch it back and make sure the id hasn't changed but the data did change
+        promotions = Promotion.all()
+        self.assertEqual(len(promotions), 1)
+        self.assertEqual(promotions[0].id, original_id)
+        self.assertEqual(promotions[0].name, "Updated Name")
+
+    def test_update_no_id(self):
+        """It should not Update a Promotion with no id"""
+        promotion = PromotionFactory()
+        promotion.id = None
+        self.assertRaises(DataValidationError, promotion.update)
 
     def test_delete_a_promotion(self):
         """It should Delete a Promotion"""
@@ -150,3 +175,120 @@ class TestPromotionModel(TestCaseBase):
         data["start_date"] = "invalid-date"
         promotion = Promotion()
         self.assertRaises(DataValidationError, promotion.deserialize, data)
+
+    def test_deserialize_attribute_error(self):
+        """It should not deserialize with attribute error"""
+        promotion = Promotion()
+        # This should trigger AttributeError -> DataValidationError
+        with self.assertRaises(DataValidationError):
+            promotion.deserialize({"invalid_field": "value"})
+
+    def test_deserialize_key_error(self):
+        """It should not deserialize with missing key"""
+        promotion = Promotion()
+        # Missing required fields should trigger KeyError -> DataValidationError
+        with self.assertRaises(DataValidationError):
+            promotion.deserialize({"name": "Test"})  # Missing other required fields
+
+
+######################################################################
+#  T E S T   E X C E P T I O N   H A N D L E R S
+######################################################################
+class TestExceptionHandlers(TestCaseBase):
+    """Promotion Model Exception Handlers"""
+
+    @patch("service.models.db.session.commit")
+    def test_create_exception(self, mock_commit):
+        """It should catch a create exception"""
+        mock_commit.side_effect = Exception("Database error")
+        promotion = PromotionFactory()
+        self.assertRaises(DataValidationError, promotion.create)
+
+    @patch("service.models.db.session.commit")
+    def test_update_exception(self, mock_commit):
+        """It should catch a update exception"""
+        # First create the promotion normally
+        promotion = PromotionFactory()
+        promotion.create()
+        promotion.name = "Updated Name"
+
+        # Then mock only the update call
+        mock_commit.side_effect = Exception("Database error")
+        self.assertRaises(DataValidationError, promotion.update)
+
+    @patch("service.models.db.session.commit")
+    def test_delete_exception(self, mock_commit):
+        """It should catch a delete exception"""
+        # First create the promotion normally
+        promotion = PromotionFactory()
+        promotion.create()
+
+        # Then mock only the delete call
+        mock_commit.side_effect = Exception("Database error")
+        self.assertRaises(DataValidationError, promotion.delete)
+
+
+######################################################################
+#  Q U E R Y   T E S T   C A S E S
+######################################################################
+class TestModelQueries(TestCaseBase):
+    """Promotion Model Query Tests"""
+
+    def test_find_promotion(self):
+        """It should Find a Promotion by ID"""
+        promotions = []
+        for _ in range(5):
+            promotion = PromotionFactory()
+            promotion.create()
+            promotions.append(promotion)
+        # make sure they got saved
+        self.assertEqual(len(Promotion.all()), 5)
+        # find the 2nd promotion in the list
+        promotion = Promotion.find(promotions[1].id)
+        self.assertIsNotNone(promotion)
+        self.assertEqual(promotion.id, promotions[1].id)
+        self.assertEqual(promotion.name, promotions[1].name)
+        self.assertEqual(promotion.promotion_type, promotions[1].promotion_type)
+
+    def test_find_by_name(self):
+        """It should Find Promotions by Name"""
+        for _ in range(10):
+            promotion = PromotionFactory()
+            promotion.create()
+        name = Promotion.all()[0].name
+        found = Promotion.find_by_name(name)
+        count = len([p for p in Promotion.all() if p.name == name])
+        self.assertEqual(found.count(), count)
+        for promotion in found:
+            self.assertEqual(promotion.name, name)
+
+    def test_find_by_category(self):
+        """It should Find Promotions by Category (product_id)"""
+        for _ in range(10):
+            promotion = PromotionFactory()
+            promotion.create()
+        product_id = Promotion.all()[0].product_id
+        found = Promotion.find_by_category(str(product_id))
+        count = len([p for p in Promotion.all() if p.product_id == product_id])
+        self.assertEqual(found.count(), count)
+        for promotion in found:
+            self.assertEqual(promotion.product_id, product_id)
+
+    def test_find_by_id_method(self):
+        """It should Find a Promotion by ID using find_by_id method"""
+        promotion = PromotionFactory()
+        promotion.create()
+        found = Promotion.find_by_id(promotion.id)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].id, promotion.id)
+        self.assertEqual(found[0].name, promotion.name)
+
+    def test_find_by_category_invalid(self):
+        """It should handle invalid category gracefully"""
+        found = Promotion.find_by_category("invalid")
+        self.assertEqual(found.count(), 0)
+
+    def test_find_by_id_invalid(self):
+        """It should handle invalid id gracefully"""
+        found = Promotion.find_by_id("invalid")
+        self.assertEqual(len(found), 0)

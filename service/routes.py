@@ -64,7 +64,7 @@ def list_pets():
     # Parse any arguments from the query string
     product = request.args.get("product")
     number = request.args.get("number")
-    id = request.args.get("id")
+    promotion_id = request.args.get("id")
 
     if product:
         app.logger.info("Find by category: %s", product)
@@ -72,10 +72,9 @@ def list_pets():
     elif number:
         app.logger.info("Find by name: %s", number)
         promotions = Promotion.find_by_name(number)
-    elif id:
-        app.logger.info("Find by id: %s", id)
-        # create enum from string
-        promotions = Promotion.find_by_id(id[id.upper()])
+    elif promotion_id:
+        app.logger.info("Find by id: %s", promotion_id)
+        promotions = Promotion.find_by_id(promotion_id)
     else:
         app.logger.info("Find all")
         promotions = Promotion.all()
@@ -143,6 +142,34 @@ def create_promotions():
 ######################################################################
 # UPDATE A PROMOTION
 ######################################################################
+@app.route("/promotions/<int:promotion_id>", methods=["PUT"])
+def update_promotions(promotion_id):
+    """
+    Update a Promotion
+    This endpoint will update a Promotion based the data in the body that is posted
+    """
+    app.logger.info("Request to Update a promotion with id [%s]", promotion_id)
+    check_content_type("application/json")
+
+    # Attempt to find the Promotion and abort if not found
+    promotion = Promotion.find(promotion_id)
+    if not promotion:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Promotion with id '{promotion_id}' was not found.",
+        )
+
+    # Update the Promotion with the new data
+    data = request.get_json()
+    app.logger.info("Processing: %s", data)
+    promotion.deserialize(data)
+
+    # Save the updates to the database
+    promotion.update()
+
+    app.logger.info("Promotion with ID: %d updated.", promotion.id)
+    return jsonify(promotion.serialize()), status.HTTP_200_OK
+
 
 ######################################################################
 # DELETE A PROMOTION
@@ -163,6 +190,7 @@ def delete_promotions(promotion_id):
 
     app.logger.info("promotion with ID: %d delete complete.", promotion_id)
     return {}, status.HTTP_204_NO_CONTENT
+
 
 ######################################################################
 # U T I L I T Y   F U N C T I O N S
