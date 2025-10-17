@@ -61,9 +61,7 @@ class Promotion(db.Model):
         return f"<Promotion {self.name} id=[{self.id}]>"
 
     def create(self):
-        """
-        Creates a Promotion in the database
-        """
+        """Creates a Promotion in the database"""
         logger.info("Creating %s", self.name)
         self.id = None  # pylint: disable=invalid-name
         try:
@@ -75,10 +73,10 @@ class Promotion(db.Model):
             raise DataValidationError(e) from e
 
     def update(self):
-        """
-        Updates a Promotion in the database
-        """
+        """Updates a Promotion in the database"""
         logger.info("Saving %s", self.name)
+        if not self.id:
+            raise DataValidationError("Update called with empty ID field")
         try:
             db.session.commit()
         except Exception as e:
@@ -173,3 +171,31 @@ class Promotion(db.Model):
         """Returns all Promotions that match the given promotion_type exactly"""
         logger.info("Processing promotion_type query for %s ...", promotion_type)
         return cls.query.filter(cls.promotion_type == promotion_type).all()
+
+    @classmethod
+    def find_by_category(cls, category):
+        """Returns all Promotions in a category (using product_id as category)
+        Args:
+            category: the product_id/category of the Promotions you want to match
+        """
+        logger.info("Processing category query for %s ...", category)
+        try:
+            product_id = int(category)
+            return cls.query.filter(cls.product_id == product_id)
+        except ValueError:
+            return cls.query.filter(False)  # Return empty result for invalid product_id
+
+    @classmethod
+    def find_by_id(cls, promotion_id):
+        """Returns all Promotions with the given id (single result in list)
+        Args:
+            promotion_id: the id of the Promotion you want to match
+        """
+        logger.info("Processing id query for %s ...", promotion_id)
+        try:
+            pid = int(promotion_id)
+            promotion = cls.query.session.get(cls, pid)
+            return [promotion] if promotion else []
+        except (ValueError, TypeError):
+            return []
+

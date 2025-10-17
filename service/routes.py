@@ -47,7 +47,7 @@ def index():
 
 
 ######################################################################
-# LIST Promotions with optional ?promotion_type=...
+# LIST Promotions (supports ?promotion_type=...)
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
@@ -187,3 +187,4 @@ def check_content_type(content_type: str):
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         f"Content-Type must be {content_type}",
     )
+
