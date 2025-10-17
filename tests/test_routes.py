@@ -22,7 +22,7 @@ Promotion API Service Test Suite
 import os
 import logging
 from unittest import TestCase
-from unittest.mock import patch
+# from unittest.mock import patch
 from wsgi import app
 from service.common import status
 from service.models import Promotion, db
