@@ -79,7 +79,7 @@ class TestPromotionService(TestCase):
         """Runs after each test"""
         db.session.remove()
 
-    # ---------------------- Home ----------------------
+    # ---------- Home ----------
     def test_index(self):
         """It should call the home page"""
         resp = self.client.get("/")
@@ -89,7 +89,7 @@ class TestPromotionService(TestCase):
         self.assertEqual(data["version"], "1.0.0")
         self.assertIn("promotions", data["paths"])
 
-    # ---------------------- Create ----------------------
+    # ---------- Create ----------
     def test_create_promotion(self):
         """It should Create a new Promotion"""
         payload = make_payload()
@@ -113,7 +113,56 @@ class TestPromotionService(TestCase):
         again = follow.get_json()
         self.assertEqual(again["name"], payload["name"])
 
-    # ---------------------- Delete ----------------------
+    # ---------- Query by promotion_type ----------
+    def test_query_by_promotion_type_returns_matches(self):
+        """It should return only promotions with the given promotion_type (exact match)"""
+        # Arrange: two types
+        self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="Percent10",
+                promotion_type="Percentage off",
+                value=10,
+            ),
+        )
+        self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="BOGO",
+                promotion_type="Buy One Get One",
+                value=100,
+            ),
+        )
+
+        # Act
+        resp = self.client.get(f"{BASE_URL}?promotion_type=Buy One Get One")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+
+        # Assert: only BOGO
+        self.assertTrue(isinstance(data, list))
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["promotion_type"], "Buy One Get One")
+        self.assertEqual(data[0]["name"], "BOGO")
+
+    def test_query_by_promotion_type_returns_empty_when_no_match(self):
+        """It should return 200 and empty list when no promotions match"""
+        # Arrange: create other type
+        self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="Percent10",
+                promotion_type="Percentage off",
+                value=10,
+            ),
+        )
+
+        # Act
+        resp = self.client.get(f"{BASE_URL}?promotion_type=Nonexistent Type")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.get_json(), [])
+
+    # ---------- Delete ----------
     def test_delete_promotion_happy_path(self):
         """It should delete an existing Promotion and return 204"""
         # create one
@@ -139,13 +188,13 @@ class TestSadPaths(TestCase):
     def setUp(self):
         self.client = app.test_client()
 
-    # ---------- missing data ----------
+    # missing data
     def test_create_promotion_no_data(self):
         """It should not Create a Promotion with missing data"""
         resp = self.client.post(BASE_URL, json={})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ---------- no/wrong content type ----------
+    # no / wrong content type
     def test_create_promotion_no_content_type(self):
         """It should not Create a Promotion with no content type"""
         resp = self.client.post(BASE_URL)
@@ -156,20 +205,18 @@ class TestSadPaths(TestCase):
         resp = self.client.post(BASE_URL, data="hello", content_type="text/html")
         self.assertEqual(resp.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
-    # ---------- bad fields ----------
+    # bad integer fields
     def test_create_promotion_bad_value(self):
         """It should not Create a Promotion with bad value data"""
-        payload = make_payload(value="bad_value")  # value must be int
-        resp = self.client.post(BASE_URL, json=payload)
+        resp = self.client.post(BASE_URL, json=make_payload(value="bad_value"))
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_create_promotion_bad_product_id(self):
         """It should not Create a Promotion with bad product_id data"""
-        payload = make_payload(product_id="not_a_number")  # product_id must be int
-        resp = self.client.post(BASE_URL, json=payload)
+        resp = self.client.post(BASE_URL, json=make_payload(product_id="not_a_number"))
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ---------- delete not found ----------
+    # delete not found
     def test_delete_promotion_not_found(self):
         """It should return 404 when deleting a non-existent Promotion"""
         resp = self.client.delete(f"{BASE_URL}/999999")

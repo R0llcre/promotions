@@ -22,7 +22,7 @@ Delete and List Promotions
 """
 
 from flask import jsonify, request, url_for, abort
-from flask import current_app as app
+from flask import current_app as app  # Import Flask application
 from service.models import Promotion, DataValidationError
 from service.common import status  # HTTP status codes
 
@@ -38,23 +38,32 @@ def index():
             name="Promotions Service",
             version="1.0.0",
             description="RESTful service for managing promotions",
-            paths={"promotions": "/promotions"},
+            paths={
+                "promotions": "/promotions",
+            },
         ),
         status.HTTP_200_OK,
     )
 
 
 ######################################################################
-# LIST Promotions
+# LIST Promotions with optional ?promotion_type=...
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
     """
     List Promotions
-    Returns all promotions
+    - Without query: return all promotions
+    - With ?promotion_type=...: return exact matches
     """
     app.logger.info("Request to list Promotions")
-    promotions = Promotion.all()
+    ptype = request.args.get("promotion_type")
+    if ptype is not None:
+        app.logger.info("Filtering by promotion_type=%s", ptype)
+        promotions = Promotion.find_by_promotion_type(ptype.strip())
+    else:
+        promotions = Promotion.all()
+
     results = [p.serialize() for p in promotions]
     return jsonify(results), status.HTTP_200_OK
 
@@ -143,6 +152,8 @@ def update_promotions(promotion_id: int):
 def delete_promotions(promotion_id: int):
     """
     Delete a Promotion by id
+    - If the promotion doesn't exist, return 404
+    - If exists, delete and return 204
     """
     app.logger.info("Request to delete Promotion with id [%s]", promotion_id)
     promotion = Promotion.find(promotion_id)

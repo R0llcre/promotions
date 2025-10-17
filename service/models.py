@@ -1,7 +1,21 @@
-"""
-Models for YourResourceModel
+######################################################################
+# Copyright 2016, 2024 John J. Rofrano. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+######################################################################
 
-All of the models are stored in this module
+"""
+Models for Promotions
 """
 
 import logging
@@ -35,7 +49,9 @@ class Promotion(db.Model):
     end_date = db.Column(db.Date, nullable=False)
     # Database auditing fields
     created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-    last_updated = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False)
+    last_updated = db.Column(
+        db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False
+    )
 
     ##################################################
     # INSTANCE METHODS
@@ -46,7 +62,7 @@ class Promotion(db.Model):
 
     def create(self):
         """
-        Creates a YourResourceModel to the database
+        Creates a Promotion in the database
         """
         logger.info("Creating %s", self.name)
         self.id = None  # pylint: disable=invalid-name
@@ -60,7 +76,7 @@ class Promotion(db.Model):
 
     def update(self):
         """
-        Updates a YourResourceModel to the database
+        Updates a Promotion in the database
         """
         logger.info("Saving %s", self.name)
         try:
@@ -71,7 +87,7 @@ class Promotion(db.Model):
             raise DataValidationError(e) from e
 
     def delete(self):
-        """Removes a YourResourceModel from the data store"""
+        """Removes a Promotion from the data store"""
         logger.info("Deleting %s", self.name)
         try:
             db.session.delete(self)
@@ -90,7 +106,7 @@ class Promotion(db.Model):
             "value": self.value,
             "product_id": self.product_id,
             "start_date": self.start_date.isoformat() if self.start_date else None,
-            "end_date": self.end_date.isoformat() if self.end_date else None
+            "end_date": self.end_date.isoformat() if self.end_date else None,
         }
 
     def deserialize(self, data: dict):
@@ -106,8 +122,7 @@ class Promotion(db.Model):
                 self.value = data["value"]
             else:
                 raise DataValidationError(
-                    "Invalid type for integer [value]: "
-                    + str(type(data["value"]))
+                    "Invalid type for integer [value]: " + str(type(data["value"]))
                 )
             if isinstance(data["product_id"], int):
                 self.product_id = data["product_id"]
@@ -121,10 +136,13 @@ class Promotion(db.Model):
         except AttributeError as error:
             raise DataValidationError("Invalid attribute: " + error.args[0]) from error
         except KeyError as error:
-            raise DataValidationError("Invalid promotion: missing " + error.args[0]) from error
+            raise DataValidationError(
+                "Invalid promotion: missing " + error.args[0]
+            ) from error
         except (TypeError, ValueError) as error:
             raise DataValidationError(
-                "Invalid promotion: body of request contained bad or no data " + str(error)
+                "Invalid promotion: body of request contained bad or no data "
+                + str(error)
             ) from error
         return self
 
@@ -134,22 +152,24 @@ class Promotion(db.Model):
 
     @classmethod
     def all(cls):
-        """Returns all of the YourResourceModels in the database"""
-        logger.info("Processing all YourResourceModels")
+        """Returns all of the Promotions in the database"""
+        logger.info("Processing all Promotions")
         return cls.query.all()
 
     @classmethod
     def find(cls, by_id):
-        """Finds a YourResourceModel by it's ID"""
+        """Finds a Promotion by it's ID"""
         logger.info("Processing lookup for id %s ...", by_id)
         return cls.query.session.get(cls, by_id)
 
     @classmethod
     def find_by_name(cls, name):
-        """Returns all YourResourceModels with the given name
-
-        Args:
-            name (string): the name of the YourResourceModels you want to match
-        """
+        """Returns all Promotions with the given name"""
         logger.info("Processing name query for %s ...", name)
-        return cls.query.filter(cls.name == name)
+        return cls.query.filter(cls.name == name).all()
+
+    @classmethod
+    def find_by_promotion_type(cls, promotion_type: str):
+        """Returns all Promotions that match the given promotion_type exactly"""
+        logger.info("Processing promotion_type query for %s ...", promotion_type)
+        return cls.query.filter(cls.promotion_type == promotion_type).all()
