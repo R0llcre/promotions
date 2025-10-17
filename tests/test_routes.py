@@ -220,11 +220,9 @@ class TestSadPaths(TestCase):
 # ---------------------- Extra coverage to reach >=95% ----------------------
 
 
-def test_update_promotion_success(client=None):
+def test_update_promotion_success():
     """It should Update an existing Promotion (200)"""
-    from wsgi import app
-
-    test_client = client or app.test_client()
+    client = app.test_client()
 
     # create one
     payload = {
@@ -235,23 +233,21 @@ def test_update_promotion_success(client=None):
         "start_date": "2025-10-01",
         "end_date": "2025-10-31",
     }
-    created = test_client.post("/promotions", json=payload)
+    created = client.post("/promotions", json=payload)
     assert created.status_code == 201
     pid = created.get_json()["id"]
 
     # update it
     payload["name"] = "Promo A+"
-    resp = test_client.put(f"/promotions/{pid}", json=payload)
+    resp = client.put(f"/promotions/{pid}", json=payload)
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["name"] == "Promo A+"
 
 
-def test_update_promotion_not_found(client=None):
+def test_update_promotion_not_found():
     """It should return 404 when updating a non-existent Promotion"""
-    from wsgi import app
-
-    test_client = client or app.test_client()
+    client = app.test_client()
 
     payload = {
         "name": "Ghost",
@@ -261,17 +257,15 @@ def test_update_promotion_not_found(client=None):
         "start_date": "2025-10-01",
         "end_date": "2025-10-31",
     }
-    resp = test_client.put("/promotions/999999", json=payload)
+    resp = client.put("/promotions/999999", json=payload)
     assert resp.status_code == 404
     data = resp.get_json()
     assert isinstance(data, dict)
 
 
-def test_list_promotions_all_returns_list(client=None):
+def test_list_promotions_all_returns_list():
     """It should list all promotions when no query params are given"""
-    from wsgi import app
-
-    test_client = client or app.test_client()
+    client = app.test_client()
 
     # ensure at least 2 items
     a = {
@@ -290,33 +284,29 @@ def test_list_promotions_all_returns_list(client=None):
         "start_date": "2025-10-01",
         "end_date": "2025-10-31",
     }
-    test_client.post("/promotions", json=a)
-    test_client.post("/promotions", json=b)
+    client.post("/promotions", json=a)
+    client.post("/promotions", json=b)
 
-    resp = test_client.get("/promotions")
+    resp = client.get("/promotions")
     assert resp.status_code == 200
     data = resp.get_json()
     assert isinstance(data, list)
     assert len(data) >= 2
 
 
-def test_method_not_allowed_returns_json(client=None):
+def test_method_not_allowed_returns_json():
     """It should return JSON 405 for wrong method on /promotions/<id>"""
-    from wsgi import app
-
-    test_client = client or app.test_client()
-    resp = test_client.post("/promotions/1")  # POST not allowed here
+    client = app.test_client()
+    resp = client.post("/promotions/1")  # POST not allowed here
     assert resp.status_code == 405
     data = resp.get_json()
     assert isinstance(data, dict)  # our JSON error handler
 
 
-def test_not_found_returns_json(client=None):
+def test_not_found_returns_json():
     """It should return JSON 404 for unknown routes"""
-    from wsgi import app
-
-    test_client = client or app.test_client()
-    resp = test_client.get("/no-such-route")
+    client = app.test_client()
+    resp = client.get("/no-such-route")
     assert resp.status_code == 404
     data = resp.get_json()
     assert isinstance(data, dict)  # our JSON error handler
