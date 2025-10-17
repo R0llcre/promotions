@@ -202,4 +202,3 @@ class Promotion(db.Model):
             return [promotion] if promotion else []
         except (ValueError, TypeError):
             return []
-
