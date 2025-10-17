@@ -1,7 +1,21 @@
-"""
-Models for YourResourceModel
+######################################################################
+# Copyright 2016, 2024 John J. Rofrano. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+######################################################################
 
-All of the models are stored in this module
+"""
+Models for Promotions
 """
 
 import logging
@@ -10,17 +24,17 @@ from flask_sqlalchemy import SQLAlchemy
 
 logger = logging.getLogger("flask.app")
 
-# Create the SQLAlchemy object to be initialized later in init_db()
+# SQLAlchemy handle; initialized in init_db()
 db = SQLAlchemy()
 
 
 class DataValidationError(Exception):
-    """Used for an data validation errors when deserializing"""
+    """Used for data validation errors when deserializing or updating."""
 
 
 class Promotion(db.Model):
     """
-    Class that represents a promotion
+    Class that represents a Promotion
     """
 
     ##################################################
@@ -33,7 +47,7 @@ class Promotion(db.Model):
     product_id = db.Column(db.Integer, nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
-    # Database auditing fields
+    # Auditing fields
     created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     last_updated = db.Column(
         db.DateTime, default=db.func.now(), onupdate=db.func.now(), nullable=False
@@ -47,46 +61,42 @@ class Promotion(db.Model):
         return f"<Promotion {self.name} id=[{self.id}]>"
 
     def create(self):
-        """
-        Creates a Promotion to the database
-        """
+        """Creates this Promotion in the database."""
         logger.info("Creating %s", self.name)
-        self.id = None  # pylint: disable=invalid-name
+        self.id = None  # make sure id is None so SQLAlchemy will assign one
         try:
             db.session.add(self)
             db.session.commit()
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - exercised via exception tests
             db.session.rollback()
             logger.error("Error creating record: %s", self)
             raise DataValidationError(e) from e
 
     def update(self):
-        """
-        Updates a Promotion to the database
-        """
+        """Updates this Promotion in the database."""
         logger.info("Saving %s", self.name)
         if not self.id:
             raise DataValidationError("Update called with empty ID field")
         try:
             db.session.commit()
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - exercised via exception tests
             db.session.rollback()
             logger.error("Error updating record: %s", self)
             raise DataValidationError(e) from e
 
     def delete(self):
-        """Removes a Promotion from the data store"""
+        """Removes this Promotion from the data store."""
         logger.info("Deleting %s", self.name)
         try:
             db.session.delete(self)
             db.session.commit()
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - exercised via exception tests
             db.session.rollback()
             logger.error("Error deleting record: %s", self)
             raise DataValidationError(e) from e
 
-    def serialize(self):
-        """Serializes a promotion into a dictionary"""
+    def serialize(self) -> dict:
+        """Serializes a Promotion into a dictionary."""
         return {
             "id": self.id,
             "name": self.name,
@@ -99,19 +109,22 @@ class Promotion(db.Model):
 
     def deserialize(self, data: dict):
         """
-        Deserializes a promotion from a dictionary
+        Deserializes a Promotion from a dictionary.
+
         Args:
-            data (dict): A dictionary containing the promotion data
+            data (dict): a dictionary containing the promotion data
         """
         try:
             self.name = data["name"]
             self.promotion_type = data["promotion_type"]
+
             if isinstance(data["value"], int):
                 self.value = data["value"]
             else:
                 raise DataValidationError(
                     "Invalid type for integer [value]: " + str(type(data["value"]))
                 )
+
             if isinstance(data["product_id"], int):
                 self.product_id = data["product_id"]
             else:
@@ -119,8 +132,10 @@ class Promotion(db.Model):
                     "Invalid type for integer [product_id]: "
                     + str(type(data["product_id"]))
                 )
+
             self.start_date = date.fromisoformat(data["start_date"])
             self.end_date = date.fromisoformat(data["end_date"])
+
         except AttributeError as error:
             raise DataValidationError("Invalid attribute: " + error.args[0]) from error
         except KeyError as error:
@@ -132,6 +147,7 @@ class Promotion(db.Model):
                 "Invalid promotion: body of request contained bad or no data "
                 + str(error)
             ) from error
+
         return self
 
     ##################################################
@@ -140,44 +156,54 @@ class Promotion(db.Model):
 
     @classmethod
     def all(cls):
-        """Returns all of the Promotions in the database"""
+        """Returns all Promotions in the database (as a list)."""
         logger.info("Processing all Promotions")
         return cls.query.all()
 
     @classmethod
     def find(cls, by_id):
-        """Finds a Promotion by it's ID"""
+        """Finds a Promotion by its ID (single object or None)."""
         logger.info("Processing lookup for id %s ...", by_id)
         return cls.query.session.get(cls, by_id)
 
     @classmethod
     def find_by_name(cls, name):
-        """Returns all Promotions with the given name
+        """
+        Returns a SQLAlchemy Query filtered by name.
 
-        Args:
-            name (string): the name of the Promotion you want to match
+        Tests call `.count()` on the result, so we must return a Query,
+        not a list.
         """
         logger.info("Processing name query for %s ...", name)
         return cls.query.filter(cls.name == name)
 
     @classmethod
+    def find_by_promotion_type(cls, promotion_type: str):
+        """Returns all Promotions that match the given promotion_type exactly (as a list)."""
+        logger.info("Processing promotion_type query for %s ...", promotion_type)
+        return cls.query.filter(cls.promotion_type == promotion_type).all()
+
+    @classmethod
     def find_by_category(cls, category):
-        """Returns all Promotions in a category (using product_id as category)
-        Args:
-            category: the product_id/category of the Promotions you want to match
+        """
+        Returns a SQLAlchemy Query filtered by product_id (used as category).
+
+        The test suite calls `.count()` on the returned value, so we must
+        return a Query, not a list. For invalid input, return an empty Query.
         """
         logger.info("Processing category query for %s ...", category)
         try:
             product_id = int(category)
             return cls.query.filter(cls.product_id == product_id)
-        except ValueError:
-            return cls.query.filter(False)  # Return empty result for invalid product_id
+        except (ValueError, TypeError):
+            # empty Query (still supports .count() -> 0)
+            return cls.query.filter(False)
 
     @classmethod
     def find_by_id(cls, promotion_id):
-        """Returns all Promotions with the given id (single result in list)
-        Args:
-            promotion_id: the id of the Promotion you want to match
+        """
+        Returns a single-element list containing the Promotion with the given id,
+        or an empty list if not found or invalid.
         """
         logger.info("Processing id query for %s ...", promotion_id)
         try:

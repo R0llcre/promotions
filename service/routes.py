@@ -15,22 +15,22 @@
 ######################################################################
 
 """
-Promotion Service
+Promotions Service
 
-This service implements a REST API that allows you to Create, Read, Update
-and Delete Promotion
+This service implements a REST API that allows you to Create, Read, Update,
+Delete and List Promotions
 """
 
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
-from service.models import Promotion
-from service.common import status  # HTTP Status Codes
+from service.models import Promotion, DataValidationError
+from service.common import status  # HTTP status codes
 
 
 ######################################################################
-# GET INDEX
+# Root endpoint
 ######################################################################
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
     """Root URL response"""
     return (
@@ -47,90 +47,65 @@ def index():
 
 
 ######################################################################
-#  R E S T   A P I   E N D P O I N T S
-######################################################################
-
-
-######################################################################
-# LIST ALL PROMOTIONS
+# LIST Promotions with optional ?promotion_type=...
 ######################################################################
 @app.route("/promotions", methods=["GET"])
-def list_pets():
-    """Returns all of the Promotions"""
-    app.logger.info("Request for promotion list")
-
-    promotions = []
-
-    # Parse any arguments from the query string
-    product = request.args.get("product")
-    number = request.args.get("number")
-    promotion_id = request.args.get("id")
-
-    if product:
-        app.logger.info("Find by category: %s", product)
-        promotions = Promotion.find_by_category(product)
-    elif number:
-        app.logger.info("Find by name: %s", number)
-        promotions = Promotion.find_by_name(number)
-    elif promotion_id:
-        app.logger.info("Find by id: %s", promotion_id)
-        promotions = Promotion.find_by_id(promotion_id)
+def list_promotions():
+    """
+    List Promotions
+    - Without query: return all promotions
+    - With ?promotion_type=...: return exact matches
+    """
+    app.logger.info("Request to list Promotions")
+    ptype = request.args.get("promotion_type")
+    if ptype is not None:
+        app.logger.info("Filtering by promotion_type=%s", ptype)
+        promotions = Promotion.find_by_promotion_type(ptype.strip())
     else:
-        app.logger.info("Find all")
         promotions = Promotion.all()
 
-    results = [promotion.serialize() for promotion in promotions]
-    app.logger.info("Returning %d promotions", len(results))
+    results = [p.serialize() for p in promotions]
     return jsonify(results), status.HTTP_200_OK
 
 
 ######################################################################
-# READ A PROMOTION
+# READ a Promotion
 ######################################################################
 @app.route("/promotions/<int:promotion_id>", methods=["GET"])
-def get_promotions(promotion_id):
+def get_promotions(promotion_id: int):
     """
-    Retrieve a single Promotion
-
-    This endpoint will return a Promotion based on it's id
+    Get a Promotion by id
     """
-    app.logger.info("Request to Retrieve a promotion with id [%s]", promotion_id)
-
-    # Attempt to find the Promotion and abort if not found
+    app.logger.info("Request to get Promotion with id [%s]", promotion_id)
     promotion = Promotion.find(promotion_id)
     if not promotion:
         abort(
             status.HTTP_404_NOT_FOUND,
             f"Promotion with id '{promotion_id}' was not found.",
         )
-
-    app.logger.info("Returning promotion: %s", promotion.name)
     return jsonify(promotion.serialize()), status.HTTP_200_OK
 
 
 ######################################################################
-# CREATE A NEW PROMOTION
+# CREATE a Promotion
 ######################################################################
 @app.route("/promotions", methods=["POST"])
 def create_promotions():
     """
     Create a Promotion
-    This endpoint will create a Promotion based the data in the body that is posted
     """
-    app.logger.info("Request to Create a Promotion...")
+    app.logger.info("Request to Create a Promotion")
     check_content_type("application/json")
 
     promotion = Promotion()
-    # Get the data from the request and deserialize it
-    data = request.get_json()
-    app.logger.info("Processing: %s", data)
-    promotion.deserialize(data)
+    try:
+        data = request.get_json()
+        app.logger.info("Processing: %s", data)
+        promotion.deserialize(data)
+        promotion.create()
+    except DataValidationError as error:
+        abort(status.HTTP_400_BAD_REQUEST, str(error))
 
-    # Save the new Promotion to the database
-    promotion.create()
-    app.logger.info("Promotion with new id [%s] saved!", promotion.id)
-
-    # Return the location of the new Promotion
     location_url = url_for("get_promotions", promotion_id=promotion.id, _external=True)
     return (
         jsonify(promotion.serialize()),
@@ -140,18 +115,17 @@ def create_promotions():
 
 
 ######################################################################
-# UPDATE A PROMOTION
+# UPDATE a Promotion
 ######################################################################
 @app.route("/promotions/<int:promotion_id>", methods=["PUT"])
-def update_promotions(promotion_id):
+def update_promotions(promotion_id: int):
     """
     Update a Promotion
-    This endpoint will update a Promotion based the data in the body that is posted
+    Replaces fields of a promotion with payload values
     """
-    app.logger.info("Request to Update a promotion with id [%s]", promotion_id)
+    app.logger.info("Request to update Promotion with id [%s]", promotion_id)
     check_content_type("application/json")
 
-    # Attempt to find the Promotion and abort if not found
     promotion = Promotion.find(promotion_id)
     if not promotion:
         abort(
@@ -159,50 +133,44 @@ def update_promotions(promotion_id):
             f"Promotion with id '{promotion_id}' was not found.",
         )
 
-    # Update the Promotion with the new data
-    data = request.get_json()
-    app.logger.info("Processing: %s", data)
-    promotion.deserialize(data)
+    try:
+        data = request.get_json()
+        app.logger.info("Processing: %s", data)
+        promotion.deserialize(data)
+        promotion.id = promotion_id  # ensure path id takes precedence
+        promotion.update()
+    except DataValidationError as error:
+        abort(status.HTTP_400_BAD_REQUEST, str(error))
 
-    # Save the updates to the database
-    promotion.update()
-
-    app.logger.info("Promotion with ID: %d updated.", promotion.id)
     return jsonify(promotion.serialize()), status.HTTP_200_OK
 
 
 ######################################################################
-# DELETE A PROMOTION
+# DELETE a Promotion
 ######################################################################
 @app.route("/promotions/<int:promotion_id>", methods=["DELETE"])
-def delete_promotions(promotion_id):
+def delete_promotions(promotion_id: int):
     """
-    Delete a Promotion
-    This endpoint will delete a Promotion based on the id specified in the path
+    Delete a Promotion by id
+    - If the promotion doesn't exist, return 404
+    - If exists, delete and return 204
     """
-    app.logger.info("Request to Delete a promotion with id [%s]", promotion_id)
-
-    # Delete the Promotion if it exists
+    app.logger.info("Request to delete Promotion with id [%s]", promotion_id)
     promotion = Promotion.find(promotion_id)
-    if promotion:
-        app.logger.info("promotion with ID: %d found.", promotion.id)
-        promotion.delete()
+    if not promotion:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Promotion with id '{promotion_id}' was not found.",
+        )
 
-    app.logger.info("promotion with ID: %d delete complete.", promotion_id)
-    return {}, status.HTTP_204_NO_CONTENT
-
-
-######################################################################
-# U T I L I T Y   F U N C T I O N S
-######################################################################
+    promotion.delete()
+    return "", status.HTTP_204_NO_CONTENT
 
 
 ######################################################################
-# Checks the ContentType of a request
+# Utility: Content-Type guard
 ######################################################################
-
-
-def check_content_type(content_type):
+def check_content_type(content_type: str):
     """Checks that the media type is correct"""
     if "Content-Type" not in request.headers:
         app.logger.error("No Content-Type specified.")
