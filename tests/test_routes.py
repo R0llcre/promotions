@@ -156,6 +156,22 @@ class TestPromotionService(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.get_json(), [])
 
+    def test_query_promotion_type_blank(self):
+        """It should return 200 and [] when ?promotion_type= is blank (only spaces)"""
+        # Arrange: prepare some promotions that should NOT be returned
+        self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="X",
+                promotion_type="SomeType",
+            ),
+        )
+        # Act: blank param (spaces)
+        resp = self.client.get(f"{BASE_URL}?promotion_type=   ")
+        # Assert
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.get_json(), [])
+
     # ---------- Delete ----------
     def test_delete_promotion_happy_path(self):
         """It should delete an existing Promotion and return 204"""
