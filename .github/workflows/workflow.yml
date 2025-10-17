@@ -15,12 +15,14 @@ jobs:
     # Required services
     services:
       # Label used to access the service container
-      redis:
+      postgres:
         # Docker Hub image
-        image: redis:6-alpine
-        # Set health checks to wait until redis has started
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: pgs3cr3t
+        # Set health checks to wait until postgres has started
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -47,7 +49,7 @@ jobs:
       - name: Run unit tests with PyTest
         run: pytest --pspec --cov=service --cov-fail-under=95 --cov-report=xml
         env:
-          DATABASE_URI: "redis://redis:6379"
+          DATABASE_URI: "postgresql+psycopg://postgres:pgs3cr3t@postgres:5432/postgres"
 
       ######################################################################
       # Create a CODECOV_TOKEN in Settings->Secrets and variables->Actions
