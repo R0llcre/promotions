@@ -47,7 +47,7 @@ def index():
 
 
 ######################################################################
-# LIST Promotions (supports ?promotion_type=...)
+# LIST Promotions with optional ?promotion_type=...
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
@@ -73,7 +73,9 @@ def list_promotions():
 ######################################################################
 @app.route("/promotions/<int:promotion_id>", methods=["GET"])
 def get_promotions(promotion_id: int):
-    """Get a Promotion by id"""
+    """
+    Get a Promotion by id
+    """
     app.logger.info("Request to get Promotion with id [%s]", promotion_id)
     promotion = Promotion.find(promotion_id)
     if not promotion:
@@ -89,7 +91,9 @@ def get_promotions(promotion_id: int):
 ######################################################################
 @app.route("/promotions", methods=["POST"])
 def create_promotions():
-    """Create a Promotion"""
+    """
+    Create a Promotion
+    """
     app.logger.info("Request to Create a Promotion")
     check_content_type("application/json")
 

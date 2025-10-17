@@ -61,25 +61,27 @@ class Promotion(db.Model):
         return f"<Promotion {self.name} id=[{self.id}]>"
 
     def create(self):
-        """Creates a Promotion in the database"""
+        """
+        Creates a Promotion in the database
+        """
         logger.info("Creating %s", self.name)
         self.id = None  # pylint: disable=invalid-name
         try:
             db.session.add(self)
             db.session.commit()
-        except Exception as e:  # pragma: no cover - defensive
+        except Exception as e:
             db.session.rollback()
             logger.error("Error creating record: %s", self)
             raise DataValidationError(e) from e
 
     def update(self):
-        """Updates a Promotion in the database"""
+        """
+        Updates a Promotion in the database
+        """
         logger.info("Saving %s", self.name)
-        if not self.id:
-            raise DataValidationError("Update called with empty ID field")
         try:
             db.session.commit()
-        except Exception as e:  # pragma: no cover - defensive
+        except Exception as e:
             db.session.rollback()
             logger.error("Error updating record: %s", self)
             raise DataValidationError(e) from e
@@ -90,7 +92,7 @@ class Promotion(db.Model):
         try:
             db.session.delete(self)
             db.session.commit()
-        except Exception as e:  # pragma: no cover - defensive
+        except Exception as e:
             db.session.rollback()
             logger.error("Error deleting record: %s", self)
             raise DataValidationError(e) from e
@@ -162,11 +164,9 @@ class Promotion(db.Model):
 
     @classmethod
     def find_by_name(cls, name):
-        """Returns a SQLAlchemy Query for Promotions with the given name
-        （注意：返回 Query 对象以便测试用例调用 Query.count()）
-        """
+        """Returns all Promotions with the given name"""
         logger.info("Processing name query for %s ...", name)
-        return cls.query.filter(cls.name == name)
+        return cls.query.filter(cls.name == name).all()
 
     @classmethod
     def find_by_promotion_type(cls, promotion_type: str):
