@@ -67,7 +67,7 @@ class Promotion(db.Model):
         try:
             db.session.add(self)
             db.session.commit()
-        except Exception as e:
+        except Exception as e:  # noqa: B902
             db.session.rollback()
             logger.error("Error creating record: %s", self)
             raise DataValidationError(e) from e
@@ -79,7 +79,7 @@ class Promotion(db.Model):
             raise DataValidationError("Update called with empty ID field")
         try:
             db.session.commit()
-        except Exception as e:
+        except Exception as e:  # noqa: B902
             db.session.rollback()
             logger.error("Error updating record: %s", self)
             raise DataValidationError(e) from e
@@ -90,7 +90,7 @@ class Promotion(db.Model):
         try:
             db.session.delete(self)
             db.session.commit()
-        except Exception as e:
+        except Exception as e:  # noqa: B902
             db.session.rollback()
             logger.error("Error deleting record: %s", self)
             raise DataValidationError(e) from e
@@ -116,12 +116,14 @@ class Promotion(db.Model):
         try:
             self.name = data["name"]
             self.promotion_type = data["promotion_type"]
+
             if isinstance(data["value"], int):
                 self.value = data["value"]
             else:
                 raise DataValidationError(
                     "Invalid type for integer [value]: " + str(type(data["value"]))
                 )
+
             if isinstance(data["product_id"], int):
                 self.product_id = data["product_id"]
             else:
@@ -129,8 +131,10 @@ class Promotion(db.Model):
                     "Invalid type for integer [product_id]: "
                     + str(type(data["product_id"]))
                 )
+
             self.start_date = date.fromisoformat(data["start_date"])
             self.end_date = date.fromisoformat(data["end_date"])
+
         except AttributeError as error:
             raise DataValidationError("Invalid attribute: " + error.args[0]) from error
         except KeyError as error:
