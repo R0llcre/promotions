@@ -22,11 +22,10 @@ Delete and List Promotions
 """
 
 # Standard library
-from datetime import date
+from datetime import date, timedelta
 
 # Third-party
-from flask import abort, jsonify, request, url_for
-from flask import current_app as app  # Import Flask application
+from flask import abort, current_app as app, jsonify, request, url_for
 
 # First-party
 from service.common import status  # HTTP status codes
