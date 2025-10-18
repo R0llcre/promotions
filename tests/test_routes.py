@@ -9,13 +9,14 @@
 ######################################################################
 
 """
-Promotion API Service Test Suite (focused on Issue #24: query by promotion_type)
+Promotion API Service Test Suite
 """
 
 import os
 import logging
 from http import HTTPStatus as S
 from unittest import TestCase
+from unittest.mock import patch
 
 from wsgi import app
 from service.common import status
@@ -156,6 +157,46 @@ class TestPromotionService(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.get_json(), [])
 
+    # ---------- Extra filters to cover branches in routes ----------
+    def test_list_promotions_filter_by_name(self):
+        """It should filter promotions by ?name=..."""
+        self.client.post(BASE_URL, json=make_payload(name="OnlyMe", product_id=10))
+        self.client.post(BASE_URL, json=make_payload(name="Other", product_id=11))
+        resp = self.client.get(f"{BASE_URL}?name=OnlyMe")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], "OnlyMe")
+
+    def test_list_promotions_filter_by_product_id(self):
+        """It should filter promotions by ?product_id=..."""
+        self.client.post(BASE_URL, json=make_payload(name="A", product_id=2222))
+        self.client.post(BASE_URL, json=make_payload(name="B", product_id=3333))
+        resp = self.client.get(f"{BASE_URL}?product_id=2222")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 2222)
+
+    def test_list_promotions_filter_by_id_found_and_not_found(self):
+        """It should filter by ?id=... returning [one] or []"""
+        created = self.client.post(BASE_URL, json=make_payload(name="Single", product_id=555))
+        self.assertEqual(created.status_code, 201)
+        pid = created.get_json()["id"]
+
+        resp = self.client.get(f"{BASE_URL}?id={pid}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["id"], pid)
+
+        resp2 = self.client.get(f"{BASE_URL}?id=99999999")
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.get_json(), [])
+
     # ---------- Delete ----------
     def test_delete_promotion_happy_path(self):
         """It should delete an existing Promotion and return 204"""
@@ -263,6 +304,25 @@ def test_update_promotion_not_found():
     assert isinstance(data, dict)
 
 
+def test_update_promotion_id_mismatch_returns_400():
+    """It should return 400 when body.id != path id"""
+    client = app.test_client()
+    created = client.post("/promotions", json={
+        "name": "Mismatch", "promotion_type": "X", "value": 1, "product_id": 9,
+        "start_date": "2025-10-01", "end_date": "2025-10-31",
+    })
+    assert created.status_code == 201
+    pid = created.get_json()["id"]
+
+    payload = {
+        "id": pid + 1,  # mismatch on purpose
+        "name": "Mismatch", "promotion_type": "X", "value": 1, "product_id": 9,
+        "start_date": "2025-10-01", "end_date": "2025-10-31",
+    }
+    resp = client.put(f"/promotions/{pid}", json=payload)
+    assert resp.status_code == 400
+
+
 def test_list_promotions_all_returns_list():
     """It should list all promotions when no query params are given"""
     client = app.test_client()
@@ -294,8 +354,17 @@ def test_list_promotions_all_returns_list():
     assert len(data) >= 2
 
 
-def test_method_not_allowed_returns_json():
-    """It should return JSON 405 for wrong method on /promotions/<id>"""
+def test_query_promotion_type_405_on_wrong_method_root():
+    """It should return JSON 405 for wrong method on /promotions (PATCH not allowed)"""
+    client = app.test_client()
+    resp = client.patch("/promotions", json={"x": 1})
+    assert resp.status_code == 405
+    data = resp.get_json()
+    assert isinstance(data, dict)  # our JSON error handler
+
+
+def test_method_not_allowed_returns_json_on_item():
+    """It should return JSON 405 for wrong method on /promotions/<id> (POST not allowed)"""
     client = app.test_client()
     resp = client.post("/promotions/1")  # POST not allowed here
     assert resp.status_code == 405
@@ -310,3 +379,23 @@ def test_not_found_returns_json():
     assert resp.status_code == 404
     data = resp.get_json()
     assert isinstance(data, dict)  # our JSON error handler
+
+
+def test_internal_server_error_returns_json():
+    """It should return JSON 500 when an unhandled exception occurs"""
+    client = app.test_client()
+    # In testing mode Flask propagates exceptions; disable propagation for this test
+    prev = app.config.get("PROPAGATE_EXCEPTIONS", None)
+    app.config["PROPAGATE_EXCEPTIONS"] = False
+    try:
+        with patch("service.routes.Promotion.find", side_effect=Exception("boom")):
+            resp = client.get("/promotions/1")
+        assert resp.status_code == 500
+        data = resp.get_json()
+        assert isinstance(data, dict)
+    finally:
+        # restore previous config
+        if prev is None:
+            app.config.pop("PROPAGATE_EXCEPTIONS", None)
+        else:
+            app.config["PROPAGATE_EXCEPTIONS"] = prev
