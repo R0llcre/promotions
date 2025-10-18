@@ -170,7 +170,6 @@ def update_promotions(promotion_id: int):
     return jsonify(promotion.serialize()), status.HTTP_200_OK
 
 
-
 ######################################################################
 # DELETE a Promotion
 ######################################################################
