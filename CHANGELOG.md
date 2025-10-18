@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2025-10-18
+## 2025-10-17
 
 ### Added
 - Introduced `find_by_product_id(product_id)` method in the Promotion model.
@@ -74,3 +74,38 @@ curl -X PUT "http://localhost:8080/promotions/10" \
 # Delete a promotion (204 if exists, 404 if not)
 curl -i -X DELETE "http://localhost:8080/promotions/42"
 ```
+
+
+
+## 2025-10-18
+
+### Added
+
+* **New Query Parameter:** `active=true` for `/promotions` endpoint.
+
+  * Allows marketing managers to retrieve all **currently active promotions** based on the server’s current date.
+  * Active promotions are defined as those where `start_date <= today <= end_date`.
+  * Returns only promotions active on the current day with `200 OK` response.
+
+* **New Model Method:**
+
+  * `Promotion.find_active(on_date=None)` — retrieves all active promotions as a list.
+  * Supports optional `on_date` parameter for testing or future scheduling logic.
+
+### Updated
+
+* **Routes (`list_promotions`)**
+
+  * Added new branch to handle `?active=true` query parameter.
+  * Defined clear query priority: `id > active > name > product_id > promotion_type > all`.
+
+* **Tests**
+
+  * Added unit and integration tests covering:
+
+    * Active promotions retrieval.
+    * Expired and future promotions exclusion.
+    * Correct behavior when `active=true` parameter is used.
+
+
+
