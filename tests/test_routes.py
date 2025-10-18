@@ -21,7 +21,7 @@ from datetime import date, timedelta
 
 from wsgi import app
 from service.common import status
-from service.models import Promotion, db
+from service.models import Promotion, db, DataValidationError
 
 # Use the same env var as the app for tests; default to local Postgres test DB
 DATABASE_URI = os.getenv(
