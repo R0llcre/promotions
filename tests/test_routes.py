@@ -17,6 +17,7 @@ import logging
 from http import HTTPStatus as S
 from unittest import TestCase
 from unittest.mock import patch
+from datetime import date, timedelta
 
 from wsgi import app
 from service.common import status
@@ -213,6 +214,40 @@ class TestPromotionService(TestCase):
         # verify gone
         self.assertEqual(self.client.get(f"{BASE_URL}/{pid}").status_code, S.NOT_FOUND)
 
+    def test_query_active_returns_only_current_promotions(self):
+        """It should return only promotions that are active today when ?active=true"""
+        today = date.today()
+
+        # Active: past -> future
+        self.client.post(BASE_URL, json=make_payload(
+            name="ActiveNow",
+            start_date=(today - timedelta(days=2)).isoformat(),
+            end_date=(today + timedelta(days=2)).isoformat(),
+        ))
+
+        # Expired: past -> yesterday
+        self.client.post(BASE_URL, json=make_payload(
+            name="Expired",
+            start_date=(today - timedelta(days=10)).isoformat(),
+            end_date=(today - timedelta(days=1)).isoformat(),
+        ))
+
+        # Future: tomorrow -> future
+        self.client.post(BASE_URL, json=make_payload(
+            name="Future",
+            start_date=(today + timedelta(days=1)).isoformat(),
+            end_date=(today + timedelta(days=10)).isoformat(),
+        ))
+
+        resp = self.client.get(f"{BASE_URL}?active=true")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+
+        # Only the active one should be returned
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], "ActiveNow")
+
 
 ######################################################################
 #  S A D   P A T H S
@@ -399,3 +434,4 @@ def test_internal_server_error_returns_json():
             app.config.pop("PROPAGATE_EXCEPTIONS", None)
         else:
             app.config["PROPAGATE_EXCEPTIONS"] = prev
+
