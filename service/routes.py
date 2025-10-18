@@ -21,11 +21,15 @@ This service implements a REST API that allows you to Create, Read, Update,
 Delete and List Promotions
 """
 
-from flask import jsonify, request, url_for, abort
-from flask import current_app as app  # Import Flask application
-from service.models import Promotion, DataValidationError
-from service.common import status  # HTTP status codes
+# Standard library
 from datetime import date, timedelta
+
+# Third-party
+from flask import abort, current_app as app, jsonify, request, url_for
+
+# First-party
+from service.common import status  # HTTP status codes
+from service.models import DataValidationError, Promotion
 
 
 ######################################################################

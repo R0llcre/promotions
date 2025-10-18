@@ -21,7 +21,7 @@ from datetime import date, timedelta
 
 from wsgi import app
 from service.common import status
-from service.models import Promotion, db
+from service.models import Promotion, db, DataValidationError
 
 # Use the same env var as the app for tests; default to local Postgres test DB
 DATABASE_URI = os.getenv(
@@ -367,6 +367,28 @@ class TestSadPaths(TestCase):
         """It should return 404 when trying to deactivate a non-existent Promotion"""
         resp = self.client.put(f"{BASE_URL}/999999/deactivate")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("service.routes.Promotion.update", side_effect=DataValidationError("boom"))
+    def test_deactivate_promotion_update_error_returns_400(self, _mock_update):
+        """
+        Return 400 when deactivate triggers DataValidationError from Promotion.update().
+        """
+        today = date.today()
+        # Preparation: create a promotion that is currently active
+        created = self.client.post(
+            BASE_URL,
+            json=make_payload(
+                start_date=(today - timedelta(days=1)).isoformat(),
+                end_date=(today + timedelta(days=1)).isoformat(),
+            ),
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        pid = created.get_json()["id"]
+        # During deactivation, simulate update raising DataValidationError -> should return 400
+        resp = self.client.put(f"{BASE_URL}/{pid}/deactivate")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        body = resp.get_json()
+        self.assertIsInstance(body, dict)
 
 
 def test_update_promotion_success():
