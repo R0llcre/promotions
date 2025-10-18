@@ -48,10 +48,7 @@ def index():
 
 ######################################################################
 # LIST Promotions with optional filters
-# List Promotions
-# - Without query: return all promotions
-# - With filter: return exact matches
-#
+
 # Supported query params:
 # ?id=<int>              -> single record as [ ... ] or []
 # ?active=true           -> list of promotions active "today" (server date)
@@ -62,6 +59,11 @@ def index():
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
+    """
+    List Promotions
+    - Without query: return all promotions
+    - With filter: return exact matches
+    """
     app.logger.info("Request to list Promotions")
 
     promotion_id = request.args.get("id")
