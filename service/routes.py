@@ -47,18 +47,40 @@ def index():
 
 
 ######################################################################
-# LIST Promotions with optional ?promotion_type=...
+# LIST Promotions with optional filters
+# Supported:
+#   ?id=<int>              -> single record as [ ... ] or []
+#   ?name=<str>            -> exact match list
+#   ?product_id=<int>      -> exact match list
+#   ?promotion_type=<str>  -> exact match list
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
     """
     List Promotions
     - Without query: return all promotions
-    - With ?promotion_type=...: return exact matches
+    - With filter: return exact matches
     """
     app.logger.info("Request to list Promotions")
+
+    # Parse filters
+    promotion_id = request.args.get("id")
+    name = request.args.get("name")
+    product_id = request.args.get("product_id")
     ptype = request.args.get("promotion_type")
-    if ptype is not None:
+
+    # Apply a simple precedence so multiple params don't surprise: id > name > product_id > promotion_type
+    if promotion_id:
+        app.logger.info("Filtering by id=%s", promotion_id)
+        p = Promotion.find(promotion_id)
+        promotions = [p] if p else []
+    elif name:
+        app.logger.info("Filtering by name=%s", name)
+        promotions = Promotion.find_by_name(name.strip())
+    elif product_id:
+        app.logger.info("Filtering by product_id=%s", product_id)
+        promotions = Promotion.find_by_product_id(product_id.strip())
+    elif ptype:
         app.logger.info("Filtering by promotion_type=%s", ptype)
         promotions = Promotion.find_by_promotion_type(ptype.strip())
     else:
@@ -136,6 +158,9 @@ def update_promotions(promotion_id: int):
     try:
         data = request.get_json()
         app.logger.info("Processing: %s", data)
+        # Optional strictness: if client provides id and it disagrees with path
+        if "id" in data and str(data["id"]) != str(promotion_id):
+            abort(status.HTTP_400_BAD_REQUEST, "ID in body must match resource path")
         promotion.deserialize(data)
         promotion.id = promotion_id  # ensure path id takes precedence
         promotion.update()
@@ -171,19 +196,10 @@ def delete_promotions(promotion_id: int):
 # Utility: Content-Type guard
 ######################################################################
 def check_content_type(content_type: str):
-    """Checks that the media type is correct"""
-    if "Content-Type" not in request.headers:
-        app.logger.error("No Content-Type specified.")
+    """Checks that the media type is correct (tolerates charset etc.)"""
+    # Werkzeug exposes parsed mimetype; if header missing, this is None
+    if request.mimetype != content_type:
         abort(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             f"Content-Type must be {content_type}",
         )
-
-    if request.headers["Content-Type"] == content_type:
-        return
-
-    app.logger.error("Invalid Content-Type: %s", request.headers["Content-Type"])
-    abort(
-        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-        f"Content-Type must be {content_type}",
-    )
