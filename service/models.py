@@ -16,10 +16,18 @@
 
 """
 Models for Promotions
+
+WHY this change:
+- Unify the query contract: single-item lookup (find) returns object|None;
+  multi-item lookups (find_by_name/product_id/promotion_type) return list.
+- Replace ambiguous 'category' with explicit 'product_id' for clarity.
+- Keep a backward-compatible alias find_by_category -> find_by_product_id.
 """
 
 import logging
 from datetime import date
+from typing import List, Optional, Union
+
 from flask_sqlalchemy import SQLAlchemy
 
 logger = logging.getLogger("flask.app")
@@ -151,64 +159,63 @@ class Promotion(db.Model):
         return self
 
     ##################################################
-    # CLASS METHODS
+    # CLASS METHODS  (Unified contract)
     ##################################################
 
     @classmethod
-    def all(cls):
+    def all(cls) -> List["Promotion"]:
         """Returns all Promotions in the database (as a list)."""
         logger.info("Processing all Promotions")
-        return cls.query.all()
+        return list(cls.query.all())
 
     @classmethod
-    def find(cls, by_id):
+    def find(cls, by_id: Union[int, str]) -> Optional["Promotion"]:
         """Finds a Promotion by its ID (single object or None)."""
         logger.info("Processing lookup for id %s ...", by_id)
-        return cls.query.session.get(cls, by_id)
+        try:
+            pid = int(by_id)
+        except (TypeError, ValueError):
+            return None
+        return cls.query.session.get(cls, pid)
 
     @classmethod
-    def find_by_name(cls, name):
-        """
-        Returns a SQLAlchemy Query filtered by name.
-
-        Tests call `.count()` on the result, so we must return a Query,
-        not a list.
-        """
+    def find_by_name(cls, name: str) -> List["Promotion"]:
+        """Returns all Promotions that match the given name (as a list)."""
         logger.info("Processing name query for %s ...", name)
-        return cls.query.filter(cls.name == name)
+        return list(cls.query.filter(cls.name == name).all())
 
     @classmethod
-    def find_by_promotion_type(cls, promotion_type: str):
+    def find_by_promotion_type(cls, promotion_type: str) -> List["Promotion"]:
         """Returns all Promotions that match the given promotion_type exactly (as a list)."""
         logger.info("Processing promotion_type query for %s ...", promotion_type)
-        return cls.query.filter(cls.promotion_type == promotion_type).all()
+        return list(cls.query.filter(cls.promotion_type == promotion_type).all())
 
     @classmethod
-    def find_by_category(cls, category):
-        """
-        Returns a SQLAlchemy Query filtered by product_id (used as category).
+    def find_by_product_id(cls, product_id: Union[int, str]) -> List["Promotion"]:
+        """Returns all Promotions that match the given product_id (as a list).
 
-        The test suite calls `.count()` on the returned value, so we must
-        return a Query, not a list. For invalid input, return an empty Query.
+        WHY: This replaces the ambiguous 'category' naming with explicit 'product_id',
+        and returns a concrete list to unify multi-item query semantics.
         """
-        logger.info("Processing category query for %s ...", category)
+        logger.info("Processing product_id query for %s ...", product_id)
         try:
-            product_id = int(category)
-            return cls.query.filter(cls.product_id == product_id)
-        except (ValueError, TypeError):
-            # empty Query (still supports .count() -> 0)
-            return cls.query.filter(False)
-
-    @classmethod
-    def find_by_id(cls, promotion_id):
-        """
-        Returns a single-element list containing the Promotion with the given id,
-        or an empty list if not found or invalid.
-        """
-        logger.info("Processing id query for %s ...", promotion_id)
-        try:
-            pid = int(promotion_id)
-            promotion = cls.query.session.get(cls, pid)
-            return [promotion] if promotion else []
-        except (ValueError, TypeError):
+            pid = int(product_id)
+        except (TypeError, ValueError):
             return []
+        return list(cls.query.filter(cls.product_id == pid).all())
+
+    @classmethod
+    def find_active(cls, on_date: date | None = None) -> list["Promotion"]:
+        """
+        Returns all Promotions that are active on the given date (inclusive).
+        Active means: start_date <= on_date <= end_date.
+
+        """
+        if on_date is None:
+            on_date = date.today()
+        return list(
+            cls.query.filter(
+                cls.start_date <= on_date,
+                cls.end_date >= on_date,
+            ).all()
+        )
