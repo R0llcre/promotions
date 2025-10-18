@@ -25,6 +25,7 @@ from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
 from service.models import Promotion, DataValidationError
 from service.common import status  # HTTP status codes
+from datetime import date, timedelta
 
 
 ######################################################################
@@ -168,6 +169,35 @@ def update_promotions(promotion_id: int):
             abort(status.HTTP_400_BAD_REQUEST, "ID in body must match resource path")
         promotion.deserialize(data)
         promotion.id = promotion_id  # ensure path id takes precedence
+        promotion.update()
+    except DataValidationError as error:
+        abort(status.HTTP_400_BAD_REQUEST, str(error))
+
+    return jsonify(promotion.serialize()), status.HTTP_200_OK
+
+
+######################################################################
+# DEACTIVATE a Promotion (action)
+######################################################################
+@app.route("/promotions/<int:promotion_id>/deactivate", methods=["PUT"])
+def deactivate_promotion(promotion_id: int):
+    """
+    Action: Immediately deactivate a promotion by setting its end_date to yesterday (today - 1 day).
+    This ensures the promotion is NOT considered active today under an inclusive active-window check,
+    and preserves history without deleting the record.
+    """
+    app.logger.info("Request to deactivate Promotion with id [%s]", promotion_id)
+    promotion = Promotion.find(promotion_id)
+    if not promotion:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Promotion with id '{promotion_id}' was not found.",
+        )
+
+    try:
+        yesterday = date.today() - timedelta(days=1)
+        # never extend a promotion that already ended earlier than yesterday
+        promotion.end_date = min(promotion.end_date, yesterday)
         promotion.update()
     except DataValidationError as error:
         abort(status.HTTP_400_BAD_REQUEST, str(error))

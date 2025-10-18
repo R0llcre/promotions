@@ -248,6 +248,77 @@ class TestPromotionService(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["name"], "ActiveNow")
 
+    def test_deactivate_promotion_sets_end_date_to_yesterday_and_excludes_from_active(self):
+        """It should set end_date to yesterday and immediately exclude it from ?active=true"""
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+
+        # Preparation: create a promotion that ends in the future (currently active)
+        created = self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="ToDeactivate",
+                start_date=(today - timedelta(days=5)).isoformat(),
+                end_date=(today + timedelta(days=5)).isoformat(),
+            ),
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        pid = created.get_json()["id"]
+
+        # Action: deactivate the promotion
+        resp = self.client.put(f"{BASE_URL}/{pid}/deactivate")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.get_json()
+        self.assertEqual(body["id"], pid)
+        self.assertEqual(body["end_date"], yesterday.isoformat())
+
+        # Verification: it should no longer appear in the active promotions list
+        active_resp = self.client.get(f"{BASE_URL}?active=true")
+        self.assertEqual(active_resp.status_code, status.HTTP_200_OK)
+        active_list = active_resp.get_json()
+        self.assertTrue(all(p["id"] != pid for p in active_list))
+
+    def test_deactivate_is_idempotent_and_never_extends(self):
+        """Deactivating twice does not push end_date forward; deactivating an already expired promo won't extend it"""
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        much_earlier = today - timedelta(days=10)
+
+        # Case 1: Created with a future end date → first deactivation sets it to yesterday;
+        # a second deactivation keeps it at yesterday (it should NOT be pushed to a “new yesterday”)
+        created = self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="WillDeactivateTwice",
+                start_date=(today - timedelta(days=5)).isoformat(),
+                end_date=(today + timedelta(days=5)).isoformat(),
+            ),
+        )
+        pid = created.get_json()["id"]
+
+        self.client.put(f"{BASE_URL}/{pid}/deactivate")
+        body1 = self.client.get(f"{BASE_URL}/{pid}").get_json()
+        self.assertEqual(body1["end_date"], yesterday.isoformat())
+
+        self.client.put(f"{BASE_URL}/{pid}/deactivate")
+        body2 = self.client.get(f"{BASE_URL}/{pid}").get_json()
+        self.assertEqual(body2["end_date"], yesterday.isoformat())
+
+        # Case 2: Promotion that already expired earlier → deactivation should NOT move end_date to yesterday
+        # (prevents “extending history”)
+        created2 = self.client.post(
+            BASE_URL,
+            json=make_payload(
+                name="AlreadyExpired",
+                start_date=(today - timedelta(days=20)).isoformat(),
+                end_date=much_earlier.isoformat(),
+            ),
+        )
+        pid2 = created2.get_json()["id"]
+        self.client.put(f"{BASE_URL}/{pid2}/deactivate")
+        body3 = self.client.get(f"{BASE_URL}/{pid2}").get_json()
+        self.assertEqual(body3["end_date"], much_earlier.isoformat())
+
 
 ######################################################################
 #  S A D   P A T H S
@@ -292,8 +363,10 @@ class TestSadPaths(TestCase):
         resp = self.client.delete(f"{BASE_URL}/999999")
         self.assertEqual(resp.status_code, S.NOT_FOUND)
 
-
-# ---------------------- Extra coverage to reach >=95% ----------------------
+    def test_deactivate_promotion_not_found(self):
+        """It should return 404 when trying to deactivate a non-existent Promotion"""
+        resp = self.client.put(f"{BASE_URL}/999999/deactivate")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
 
 def test_update_promotion_success():
