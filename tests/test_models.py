@@ -23,7 +23,7 @@ import os
 import logging
 from unittest import TestCase
 from unittest.mock import patch
-from datetime import date
+from datetime import date, timedelta
 from wsgi import app
 from service.models import Promotion, DataValidationError, db
 from tests.factories import PromotionFactory
@@ -282,3 +282,30 @@ class TestModelQueries(TestCaseBase):
     def test_find_invalid_id_returns_none(self):
         """It should return None for invalid id in find()"""
         self.assertIsNone(Promotion.find("invalid"))
+
+    def test_find_active_promotions(self):
+        """It should find only the promotions active today (model query)"""
+        today = date.today()
+
+        active = PromotionFactory(
+            start_date=today - timedelta(days=1),
+            end_date=today + timedelta(days=1),
+        )
+        active.create()
+
+        expired = PromotionFactory(
+            start_date=today - timedelta(days=10),
+            end_date=today - timedelta(days=5),
+        )
+        expired.create()
+
+        future = PromotionFactory(
+            start_date=today + timedelta(days=1),
+            end_date=today + timedelta(days=5),
+        )
+        future.create()
+
+        found = Promotion.find_active()
+        assert isinstance(found, list)
+        assert len(found) == 1
+        assert found[0].id == active.id

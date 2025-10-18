@@ -204,8 +204,18 @@ class Promotion(db.Model):
             return []
         return list(cls.query.filter(cls.product_id == pid).all())
 
-    # --- Backward-compatible alias for older code paths (optional but harmless) ---
-    # @classmethod
-    # def find_by_category(cls, category):
-    #     """Deprecated alias: 'category' == 'product_id'. Keeps older callers working."""
-    #     return cls.find_by_product_id(category)
+    @classmethod
+    def find_active(cls, on_date: date | None = None) -> list["Promotion"]:
+        """
+        Returns all Promotions that are active on the given date (inclusive).
+        Active means: start_date <= on_date <= end_date.
+
+        """
+        if on_date is None:
+            on_date = date.today()
+        return list(
+            cls.query.filter(
+                cls.start_date <= on_date,
+                cls.end_date >= on_date,
+            ).all()
+        )

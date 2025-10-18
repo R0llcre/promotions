@@ -48,32 +48,35 @@ def index():
 
 ######################################################################
 # LIST Promotions with optional filters
-# Supported:
-#   ?id=<int>              -> single record as [ ... ] or []
-#   ?name=<str>            -> exact match list
-#   ?product_id=<int>      -> exact match list
-#   ?promotion_type=<str>  -> exact match list
+# List Promotions
+# - Without query: return all promotions
+# - With filter: return exact matches
+#
+# Supported query params:
+# ?id=<int>              -> single record as [ ... ] or []
+# ?active=true           -> list of promotions active "today" (server date)
+# ?name=<str>            -> exact match list
+# ?product_id=<int>      -> exact match list
+# ?promotion_type=<str>  -> exact match list
+# Priority: id > active > name > product_id > promotion_type > all
 ######################################################################
 @app.route("/promotions", methods=["GET"])
 def list_promotions():
-    """
-    List Promotions
-    - Without query: return all promotions
-    - With filter: return exact matches
-    """
     app.logger.info("Request to list Promotions")
 
-    # Parse filters
     promotion_id = request.args.get("id")
+    active = request.args.get("active")
     name = request.args.get("name")
     product_id = request.args.get("product_id")
     ptype = request.args.get("promotion_type")
 
-    # Apply a simple precedence so multiple params don't surprise: id > name > product_id > promotion_type
     if promotion_id:
         app.logger.info("Filtering by id=%s", promotion_id)
         p = Promotion.find(promotion_id)
         promotions = [p] if p else []
+    elif active and str(active).lower() == "true":
+        app.logger.info("Filtering by active promotions (server date)")
+        promotions = Promotion.find_active()
     elif name:
         app.logger.info("Filtering by name=%s", name)
         promotions = Promotion.find_by_name(name.strip())
