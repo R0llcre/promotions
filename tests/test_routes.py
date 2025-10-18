@@ -381,7 +381,6 @@ class TestSadPaths(TestCase):
         )
         self.assertEqual(created.status_code, status.HTTP_201_CREATED)
         pid = created.get_json()["id"]
-        
         # During deactivation, simulate update raising DataValidationError -> should return 400
         resp = self.client.put(f"{BASE_URL}/{pid}/deactivate")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
