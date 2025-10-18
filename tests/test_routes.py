@@ -434,4 +434,3 @@ def test_internal_server_error_returns_json():
             app.config.pop("PROPAGATE_EXCEPTIONS", None)
         else:
             app.config["PROPAGATE_EXCEPTIONS"] = prev
-
