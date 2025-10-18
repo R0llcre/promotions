@@ -370,6 +370,9 @@ class TestSadPaths(TestCase):
 
     @patch("service.routes.Promotion.update", side_effect=DataValidationError("boom"))
     def test_deactivate_promotion_update_error_returns_400(self, _mock_update):
+        """
+        Return 400 when deactivate triggers DataValidationError from Promotion.update().
+        """
         today = date.today()
         # Preparation: create a promotion that is currently active
         created = self.client.post(
