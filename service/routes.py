@@ -66,8 +66,8 @@ def index():
 def list_promotions():
     """
     List Promotions
-    Without query: return all promotions
-    With filter: return exact matches
+    - Without query: return all promotions
+    - With filter: return exact matches
     """
     app.logger.info("Request to list Promotions")
 
