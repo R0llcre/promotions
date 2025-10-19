@@ -321,6 +321,80 @@ class TestPromotionService(TestCase):
         body3 = self.client.get(f"{BASE_URL}/{pid2}").get_json()
         self.assertEqual(body3["end_date"], much_earlier.isoformat())
 
+    def test_query_inactive_returns_only_non_current_promotions(self):
+        """It should return only promotions NOT active today when ?active=false"""
+        today = date.today()
+
+        # Active: past -> future
+        self.client.post(BASE_URL, json=make_payload(
+            name="ActiveNow",
+            start_date=(today - timedelta(days=2)).isoformat(),
+            end_date=(today + timedelta(days=2)).isoformat(),
+        ))
+
+        # Expired: past -> yesterday
+        self.client.post(BASE_URL, json=make_payload(
+            name="Expired",
+            start_date=(today - timedelta(days=10)).isoformat(),
+            end_date=(today - timedelta(days=1)).isoformat(),
+        ))
+
+        # Future: tomorrow -> future
+        self.client.post(BASE_URL, json=make_payload(
+            name="Future",
+            start_date=(today + timedelta(days=1)).isoformat(),
+            end_date=(today + timedelta(days=10)).isoformat(),
+        ))
+
+        resp = self.client.get(f"{BASE_URL}?active=false")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        names = {p["name"] for p in data}
+        self.assertIn("Expired", names)
+        self.assertIn("Future", names)
+        self.assertNotIn("ActiveNow", names)
+
+    def test_active_strict_parsing_invalid_value_returns_400(self):
+        """It should return 400 for invalid ?active= values"""
+        for bad in ["", "maybe", "t", "2", "TRUEE", " nope  "]:
+            resp = self.client.get(f"{BASE_URL}?active={bad}")
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_active_truthy_and_falsy_synonyms(self):
+        """It should accept yes/no/1/0/true/false (case-insensitive)"""
+        today = date.today()
+
+        # Prepare 3 states
+        self.client.post(BASE_URL, json=make_payload(
+            name="ActiveNow",
+            start_date=(today - timedelta(days=1)).isoformat(),
+            end_date=(today + timedelta(days=1)).isoformat(),
+        ))
+        self.client.post(BASE_URL, json=make_payload(
+            name="Expired",
+            start_date=(today - timedelta(days=10)).isoformat(),
+            end_date=(today - timedelta(days=5)).isoformat(),
+        ))
+        self.client.post(BASE_URL, json=make_payload(
+            name="Future",
+            start_date=(today + timedelta(days=5)).isoformat(),
+            end_date=(today + timedelta(days=10)).isoformat(),
+        ))
+
+        # Truthy set -> only active
+        for truthy in ["true", "True", "1", "YES", " yes "]:
+            resp = self.client.get(f"{BASE_URL}?active={truthy}")
+            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            names = {p["name"] for p in resp.get_json()}
+            self.assertEqual(names, {"ActiveNow"})
+
+        # Falsy set -> expired + future
+        for falsy in ["false", "False", "0", "NO", "  no  "]:
+            resp = self.client.get(f"{BASE_URL}?active={falsy}")
+            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            names = {p["name"] for p in resp.get_json()}
+            self.assertEqual(names, {"Expired", "Future"})
+
 
 ######################################################################
 #  S A D   P A T H S

@@ -240,3 +240,30 @@ Ensure `pylint` is installed (e.g., `pip install pylint`) before running the scr
 
   * Use `DatabaseError` only for server‑side DB failures; continue to use `DataValidationError` for request validation errors (400).
   * Keep new error titles in Title Case and construct responses via `_error()` for consistency.
+
+
+## 2025-10-19 Fix `?active=false` filter
+
+### Fixed
+
+* **`GET /promotions?active=false` now correctly returns the “inactive” set** — promotions that are **not** active today (`today < start_date` **or** `today > end_date`). Previously, `active=false` was ignored or returned all results, causing ambiguity. Implemented in `service/routes.py::list_promotions()`. 
+
+### Added
+
+* **Strict parsing for `?active=`** in `list_promotions()`: accepts only `true/false/1/0/yes/no` (case-insensitive, trims spaces). Any other value returns **400 Bad Request** with a helpful message. 
+* **API tests** covering:
+
+  * `active=false` returns only inactive promotions (expired + not-yet-started),
+  * invalid values (e.g., `maybe`) produce **400**,
+  * truthy/falsy synonyms (`true/false/1/0/yes/no`) behave correctly.
+    Added to the REST test suite in `tests/test_routes.py`. 
+
+### Changed
+
+* **Active-window definition remains inclusive** (`start_date <= today <= end_date`) and continues to rely on `Promotion.find_active()`, ensuring route-layer behavior matches model-layer semantics. 
+
+### Notes for Integrators
+
+* Clients relying on permissive/ambiguous `?active=` values (e.g., `maybe`, `t`, `2`) will now receive **400**. Update callers to use one of: `true`, `false`, `1`, `0`, `yes`, `no`. 
+* No changes to other query priorities: `id > active > name > product_id > promotion_type > all`. Behavior is unchanged outside the `active` filter. 
+
