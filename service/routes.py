@@ -41,8 +41,6 @@ def _parse_bool_strict(value: str):
       False: 'false', '0', 'no'
     Others: return None (caller should raise 400)
     """
-    if value is None:
-        return None
     v = str(value).strip().lower()
     if v in {"true", "1", "yes"}:
         return True
@@ -99,13 +97,13 @@ def list_promotions():
     product_id = request.args.get("product_id")
     ptype = request.args.get("promotion_type")
 
-    # Priority 1: id
+    # 1) by id
     if promotion_id:
         app.logger.info("Filtering by id=%s", promotion_id)
         p = Promotion.find(promotion_id)
         promotions = [p] if p else []
 
-    # Priority 2: active (strict boolean parsing)
+    # 2) by active (strict)
     elif active_raw is not None:
         active = _parse_bool_strict(active_raw)
         if active is None:
@@ -121,7 +119,7 @@ def list_promotions():
         today = date.today()
         if active is True:
             app.logger.info("Filtering by active promotions (inclusive)")
-            promotions = Promotion.find_active()  # start_date <= today <= end_date
+            promotions = Promotion.find_active()  # start_date <= today <= end_date  (model)  # noqa
         else:
             app.logger.info("Filtering by inactive promotions (not active today)")
             promotions = list(
@@ -130,7 +128,7 @@ def list_promotions():
                 ).all()
             )
 
-    # Priority 3+: other filters
+    # 3+) the rest
     elif name:
         app.logger.info("Filtering by name=%s", name)
         promotions = Promotion.find_by_name(name.strip())
