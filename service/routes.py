@@ -73,7 +73,7 @@ def index():
 
 # Supported query params:
 # ?id=<int>              -> single record as [ ... ] or []
-# ?active=<bool>         -> true => active today (inclusive)
+# ?active=<bool>         -> true =>  active today (inclusive)
 #                           false => inactive today (start_date > today OR end_date < today)
 #                           Accepted: true/false/1/0/yes/no (case-insensitive)
 #                           Invalid => 400
