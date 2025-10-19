@@ -176,7 +176,6 @@ class Promotion(db.Model):
 
         return self
 
-
     ##################################################
     # CLASS METHODS  (Unified contract)
     ##################################################
