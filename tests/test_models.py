@@ -21,6 +21,7 @@ Test cases for Promotion Model
 # pylint: disable=duplicate-code
 import os
 import logging
+import unittest
 from unittest import TestCase
 from unittest.mock import patch
 from datetime import date, timedelta
@@ -309,3 +310,46 @@ class TestModelQueries(TestCaseBase):
         assert isinstance(found, list)
         assert len(found) == 1
         assert found[0].id == active.id
+
+
+class TestDeserializePatchBranches(unittest.TestCase):
+    """Covers new branches introduced by refactored deserialize()"""
+
+    def test_deserialize_mapping_gate_non_dict(self):
+        """data not a Mapping -> 'data must be a mapping/dict'"""
+        p = Promotion()
+        with self.assertRaises(DataValidationError) as ctx:
+            p.deserialize("not a dict")
+        self.assertIn("mapping", str(ctx.exception).lower())
+
+    def test_deserialize_missing_start_date_key(self):
+        """missing 'start_date' -> _require_iso_date KeyError branch"""
+        payload = {
+            "name": "X",
+            "promotion_type": "Percentage off",
+            "value": 10,
+            "product_id": 1,
+            # "start_date" intentionally missing
+            "end_date": "2025-01-01",
+        }
+        p = Promotion()
+        with self.assertRaises(DataValidationError) as ctx:
+            p.deserialize(payload)
+        self.assertIn("missing 'start_date'", str(ctx.exception))
+
+    def test_deserialize_bad_end_date_format(self):
+        """bad ISO format for 'end_date' -> _require_iso_date format error branch"""
+        payload = {
+            "name": "X",
+            "promotion_type": "Percentage off",
+            "value": 10,
+            "product_id": 1,
+            "start_date": "2025-01-01",
+            "end_date": "01-01-2025",  # invalid ISO date
+        }
+        p = Promotion()
+        with self.assertRaises(DataValidationError) as ctx:
+            p.deserialize(payload)
+        msg = str(ctx.exception).lower()
+        self.assertIn("end_date", msg)
+        self.assertIn("iso date", msg)
