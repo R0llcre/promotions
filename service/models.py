@@ -26,6 +26,7 @@ WHY this change:
 
 import logging
 from datetime import date
+from collections.abc import Mapping
 from typing import List, Optional, Union
 
 from flask_sqlalchemy import SQLAlchemy
@@ -123,6 +124,39 @@ class Promotion(db.Model):
             "end_date": self.end_date.isoformat() if self.end_date else None,
         }
 
+    @staticmethod
+    def _require_str(data: Mapping, key: str) -> str:
+        try:
+            value = data[key]
+        except KeyError as e:
+            raise DataValidationError(f"Invalid promotion: missing '{key}'") from e
+        if not isinstance(value, str):
+            raise DataValidationError(f"Field '{key}' must be a string")
+        return value
+
+    @staticmethod
+    def _require_int(data: Mapping, key: str) -> int:
+        try:
+            value = data[key]
+        except KeyError as e:
+            raise DataValidationError(f"Invalid promotion: missing '{key}'") from e
+        if not isinstance(value, int):
+            raise DataValidationError(f"Field '{key}' must be an integer")
+        return value
+
+    @staticmethod
+    def _require_iso_date(data: Mapping, key: str) -> date:
+        try:
+            raw = data[key]
+        except KeyError as e:
+            raise DataValidationError(f"Invalid promotion: missing '{key}'") from e
+        try:
+            return date.fromisoformat(raw)
+        except Exception as e:
+            raise DataValidationError(
+                f"Field '{key}' must be an ISO date (YYYY-MM-DD)"
+            ) from e
+
     def deserialize(self, data: dict):
         """
         Deserializes a Promotion from a dictionary.
@@ -130,49 +164,27 @@ class Promotion(db.Model):
         Args:
             data (dict): a dictionary containing the promotion data
         """
-        try:
-            # required string fields
-            self.name = data["name"]
-            self.promotion_type = data["promotion_type"]
+        # keep an explicit, human-friendly gate for bad body types
+        if not isinstance(data, Mapping):
+            # preserve the old "Invalid attribute" prefix pattern
+            raise DataValidationError("Invalid attribute: data must be a mapping/dict")
 
-            # integer fields with human-friendly messages
-            if isinstance(data.get("value"), int):
-                self.value = data["value"]
-            else:
-                raise DataValidationError("Field 'value' must be an integer")
+        # required string fields
+        self.name = self._require_str(data, "name")
+        self.promotion_type = self._require_str(data, "promotion_type")
 
-            if isinstance(data.get("product_id"), int):
-                self.product_id = data["product_id"]
-            else:
-                raise DataValidationError("Field 'product_id' must be an integer")
+        # required integer fields
+        self.value = self._require_int(data, "value")
+        self.product_id = self._require_int(data, "product_id")
 
-            # dates with explicit per-field validation messages
-            try:
-                self.start_date = date.fromisoformat(data["start_date"])
-            except Exception as e:
-                raise DataValidationError(
-                    "Field 'start_date' must be an ISO date (YYYY-MM-DD)"
-                ) from e
+        # required ISO dates
+        self.start_date = self._require_iso_date(data, "start_date")
+        self.end_date = self._require_iso_date(data, "end_date")
 
-            try:
-                self.end_date = date.fromisoformat(data["end_date"])
-            except Exception as e:
-                raise DataValidationError(
-                    "Field 'end_date' must be an ISO date (YYYY-MM-DD)"
-                ) from e
-
-        except AttributeError as error:
-            # e.g., data is not a dict-like
-            raise DataValidationError("Invalid attribute: " + error.args[0]) from error
-        except KeyError as error:
-            # missing required field
-            missing = error.args[0]
-            raise DataValidationError(f"Invalid promotion: missing '{missing}'") from error
-        except TypeError as error:
-            # non-dict body or incompatible structure
-            raise DataValidationError(
-                "Invalid promotion: request body contained malformed or invalid data"
-            ) from error
+        # NOTE: If you later add a business rule check like
+        # if self.start_date > self.end_date:
+        #     raise DataValidationError("Invalid date range: start_date later than end_date")
+        # do it here; it won't increase complexity much.
 
         return self
 
