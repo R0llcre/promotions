@@ -14,6 +14,7 @@ Promotion API Service Test Suite
 
 import os
 import logging
+import unittest
 from http import HTTPStatus as S
 from unittest import TestCase
 from unittest.mock import patch
@@ -21,7 +22,8 @@ from datetime import date, timedelta
 
 from wsgi import app
 from service.common import status
-from service.models import Promotion, db, DataValidationError
+from service.models import Promotion, db, DataValidationError, DatabaseError
+from service.common.error_handlers import request_validation_error, database_error
 
 # Use the same env var as the app for tests; default to local Postgres test DB
 DATABASE_URI = os.getenv(
@@ -529,3 +531,38 @@ def test_internal_server_error_returns_json():
             app.config.pop("PROPAGATE_EXCEPTIONS", None)
         else:
             app.config["PROPAGATE_EXCEPTIONS"] = prev
+
+
+class TestPatchErrorHandlersAndContentType(unittest.TestCase):
+    """Covers new lines in error handlers and content-type guard"""
+
+    @classmethod
+    def setUpClass(cls):
+        app.config["TESTING"] = True
+        cls.client = app.test_client()
+
+    def test_request_validation_error_handler_direct(self):
+        """Covers error_handlers.request_validation_error logger + return"""
+        with app.app_context():
+            resp, code = request_validation_error(DataValidationError("boom"))
+            self.assertEqual(code, status.HTTP_400_BAD_REQUEST)
+            body = resp.get_json()
+            self.assertEqual(body["error"], "Bad Request")
+            self.assertEqual(body["message"], "boom")
+
+    def test_database_error_handler_direct(self):
+        """Covers error_handlers.database_error logger + return"""
+        with app.app_context():
+            resp, code = database_error(DatabaseError("db down"))
+            self.assertEqual(code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+            body = resp.get_json()
+            self.assertEqual(body["error"], "Internal Server Error")
+            self.assertIn("unexpected", body["message"].lower())
+
+    def test_post_without_content_type_triggers_received_none(self):
+        """Covers routes.check_content_type() 'received none' branch"""
+        # 关键点：不传 content_type，让 request.content_type 为 None
+        resp = self.client.post(BASE_URL, data=b"{}")
+        self.assertEqual(resp.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+        msg = resp.get_json()["message"].lower()
+        self.assertIn("received none", msg)
