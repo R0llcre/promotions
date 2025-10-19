@@ -238,7 +238,8 @@ def check_content_type(content_type: str):
     """Checks that the media type is correct (tolerates charset etc.)"""
     # Werkzeug exposes parsed mimetype; if header missing, this is None
     if request.mimetype != content_type:
+        got = request.content_type or "none"
         abort(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            f"Content-Type must be {content_type}",
+            f"Content-Type must be {content_type}; received {got}",
         )
