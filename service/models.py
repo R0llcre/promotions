@@ -26,6 +26,7 @@ WHY this change:
 
 import logging
 from datetime import date
+from collections.abc import Mapping
 from typing import List, Optional, Union
 
 from flask_sqlalchemy import SQLAlchemy
@@ -38,6 +39,10 @@ db = SQLAlchemy()
 
 class DataValidationError(Exception):
     """Used for data validation errors when deserializing or updating."""
+
+
+class DatabaseError(Exception):
+    """Used for database operation failures (commit/connection/constraint errors)."""
 
 
 class Promotion(db.Model):
@@ -74,23 +79,27 @@ class Promotion(db.Model):
         self.id = None  # make sure id is None so SQLAlchemy will assign one
         try:
             db.session.add(self)
+            # Ensure PK is assigned even if commit() is mocked in tests:
+            # flush sends pending INSERTs to the DB within the tx and assigns IDs
+            db.session.flush()
             db.session.commit()
         except Exception as e:  # pragma: no cover - exercised via exception tests
             db.session.rollback()
             logger.error("Error creating record: %s", self)
-            raise DataValidationError(e) from e
+            raise DatabaseError(e) from e
 
     def update(self):
         """Updates this Promotion in the database."""
         logger.info("Saving %s", self.name)
         if not self.id:
-            raise DataValidationError("Update called with empty ID field")
+            # more friendly message
+            raise DataValidationError("Field 'id' is required for update")
         try:
             db.session.commit()
         except Exception as e:  # pragma: no cover - exercised via exception tests
             db.session.rollback()
             logger.error("Error updating record: %s", self)
-            raise DataValidationError(e) from e
+            raise DatabaseError(e) from e
 
     def delete(self):
         """Removes this Promotion from the data store."""
@@ -101,7 +110,7 @@ class Promotion(db.Model):
         except Exception as e:  # pragma: no cover - exercised via exception tests
             db.session.rollback()
             logger.error("Error deleting record: %s", self)
-            raise DataValidationError(e) from e
+            raise DatabaseError(e) from e
 
     def serialize(self) -> dict:
         """Serializes a Promotion into a dictionary."""
@@ -115,6 +124,39 @@ class Promotion(db.Model):
             "end_date": self.end_date.isoformat() if self.end_date else None,
         }
 
+    @staticmethod
+    def _require_str(data: Mapping, key: str) -> str:
+        try:
+            value = data[key]
+        except KeyError as e:
+            raise DataValidationError(f"Invalid promotion: missing '{key}'") from e
+        if not isinstance(value, str):
+            raise DataValidationError(f"Field '{key}' must be a string")
+        return value
+
+    @staticmethod
+    def _require_int(data: Mapping, key: str) -> int:
+        try:
+            value = data[key]
+        except KeyError as e:
+            raise DataValidationError(f"Invalid promotion: missing '{key}'") from e
+        if not isinstance(value, int):
+            raise DataValidationError(f"Field '{key}' must be an integer")
+        return value
+
+    @staticmethod
+    def _require_iso_date(data: Mapping, key: str) -> date:
+        try:
+            raw = data[key]
+        except KeyError as e:
+            raise DataValidationError(f"Invalid promotion: missing '{key}'") from e
+        try:
+            return date.fromisoformat(raw)
+        except Exception as e:
+            raise DataValidationError(
+                f"Field '{key}' must be an ISO date (YYYY-MM-DD)"
+            ) from e
+
     def deserialize(self, data: dict):
         """
         Deserializes a Promotion from a dictionary.
@@ -122,39 +164,27 @@ class Promotion(db.Model):
         Args:
             data (dict): a dictionary containing the promotion data
         """
-        try:
-            self.name = data["name"]
-            self.promotion_type = data["promotion_type"]
+        # keep an explicit, human-friendly gate for bad body types
+        if not isinstance(data, Mapping):
+            # preserve the old "Invalid attribute" prefix pattern
+            raise DataValidationError("Invalid attribute: data must be a mapping/dict")
 
-            if isinstance(data["value"], int):
-                self.value = data["value"]
-            else:
-                raise DataValidationError(
-                    "Invalid type for integer [value]: " + str(type(data["value"]))
-                )
+        # required string fields
+        self.name = self._require_str(data, "name")
+        self.promotion_type = self._require_str(data, "promotion_type")
 
-            if isinstance(data["product_id"], int):
-                self.product_id = data["product_id"]
-            else:
-                raise DataValidationError(
-                    "Invalid type for integer [product_id]: "
-                    + str(type(data["product_id"]))
-                )
+        # required integer fields
+        self.value = self._require_int(data, "value")
+        self.product_id = self._require_int(data, "product_id")
 
-            self.start_date = date.fromisoformat(data["start_date"])
-            self.end_date = date.fromisoformat(data["end_date"])
+        # required ISO dates
+        self.start_date = self._require_iso_date(data, "start_date")
+        self.end_date = self._require_iso_date(data, "end_date")
 
-        except AttributeError as error:
-            raise DataValidationError("Invalid attribute: " + error.args[0]) from error
-        except KeyError as error:
-            raise DataValidationError(
-                "Invalid promotion: missing " + error.args[0]
-            ) from error
-        except (TypeError, ValueError) as error:
-            raise DataValidationError(
-                "Invalid promotion: body of request contained bad or no data "
-                + str(error)
-            ) from error
+        # NOTE: If you later add a business rule check like
+        # if self.start_date > self.end_date:
+        #     raise DataValidationError("Invalid date range: start_date later than end_date")
+        # do it here; it won't increase complexity much.
 
         return self
 
