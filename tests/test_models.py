@@ -25,7 +25,7 @@ from unittest import TestCase
 from unittest.mock import patch
 from datetime import date, timedelta
 from wsgi import app
-from service.models import Promotion, DataValidationError, db
+from service.models import Promotion, DataValidationError, DatabaseError, db
 from tests.factories import PromotionFactory
 
 DATABASE_URI = os.getenv(
@@ -202,7 +202,7 @@ class TestExceptionHandlers(TestCaseBase):
         """It should catch a create exception"""
         mock_commit.side_effect = Exception("Database error")
         promotion = PromotionFactory()
-        self.assertRaises(DataValidationError, promotion.create)
+        self.assertRaises(DatabaseError, promotion.create)
 
     @patch("service.models.db.session.commit")
     def test_update_exception(self, mock_commit):
@@ -214,7 +214,7 @@ class TestExceptionHandlers(TestCaseBase):
 
         # Then mock only the update call
         mock_commit.side_effect = Exception("Database error")
-        self.assertRaises(DataValidationError, promotion.update)
+        self.assertRaises(DatabaseError, promotion.update)
 
     @patch("service.models.db.session.commit")
     def test_delete_exception(self, mock_commit):
@@ -225,7 +225,7 @@ class TestExceptionHandlers(TestCaseBase):
 
         # Then mock only the delete call
         mock_commit.side_effect = Exception("Database error")
-        self.assertRaises(DataValidationError, promotion.delete)
+        self.assertRaises(DatabaseError, promotion.delete)
 
 
 ######################################################################

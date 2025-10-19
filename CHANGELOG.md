@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2025-10-17
+## 2025-10-17 Unify Promotion Query Interfaces and Clarify Product ID Semantics
 
 ### Added
 - Introduced `find_by_product_id(product_id)` method in the Promotion model.
@@ -77,7 +77,7 @@ curl -i -X DELETE "http://localhost:8080/promotions/42"
 
 
 
-## 2025-10-18
+## 2025-10-18 Query for Active Promotions
 
 ### Added
 
@@ -105,7 +105,7 @@ curl -i -X DELETE "http://localhost:8080/promotions/42"
 
     * Active promotions retrieval.
 
-## 2025-10-18
+## 2025-10-18 Deactivate a Promotion
 
 ### Added
 
@@ -154,3 +154,89 @@ curl -i -X DELETE "http://localhost:8080/promotions/42"
   * `test_deactivate_promotion_sets_end_date_to_yesterday_and_excludes_from_active`
   * `test_deactivate_is_idempotent_and_never_extends`
   * `test_deactivate_promotion_not_found`
+
+    
+## 2025-10-18 Syntax & Lint Checker
+
+### Added
+
+* **Root script:** `check_syntax.py` to run **Python syntax compilation** and **strict pylint** checks locally and in CI.
+
+  * **Syntax**: concurrently compiles all discovered `*.py` with `py_compile`.
+  * **Pylint (strict)**: enabled by default; supports `--pylint-errors-only` for E/F-only mode (pre-commit friendly).
+  * **Staged-only mode**: `--staged` analyzes only staged files (`git diff --cached`).
+  * **Config auto-detect**: uses project `.pylintrc` or `pyproject.toml` if present.
+  * **Robust invocation**: prefers `pylint` binary; falls back to `python -m pylint` if not on PATH.
+  * **Exit codes**: non-zero on syntax errors or pylint failures.
+
+### Notes
+
+* Designed to catch issues **before** push/PR; reduces CI churn and review loops.
+* No runtime or schema impact (tooling only).
+* Ruff is intentionally **not used** by default in this change.
+
+### Usage
+
+```bash
+# full repo (strict)
+python3 check_syntax.py
+
+# staged only (pre-commit friendly)
+python3 check_syntax.py --staged --pylint-errors-only
+```
+
+### CI
+
+Ensure `pylint` is installed (e.g., `pip install pylint`) before running the script in CI.
+
+## 2025-10-18 Clarify error semantics & unify API error responses
+
+### ⚠️ Breaking Changes
+
+* **DB commit/constraint/connection failures now result in HTTP 500** instead of 400.
+  These server‑side failures are surfaced via a new internal exception `DatabaseError` and handled by the global 500 error handler with a fixed public message. Clients that previously treated these responses as `400 Bad Request` must update their logic to treat them as `500 Internal Server Error`.
+
+### Added
+
+* **`DatabaseError`** (in `service/models.py`) to represent DB operation failures (commit/connection/constraints).
+* **Unified error response builder** `_error(status_code, title, message)` (in `service/common/error_handlers.py`) so every handler returns the same JSON shape:
+
+  ```json
+  {"status": <int>, "error": "<Title Case>", "message": "<human-readable>"}
+  ```
+* **405 `Allow` header**: the *Method Not Allowed* handler now includes an `Allow` response header listing permitted methods (detected via `werkzeug.exceptions.MethodNotAllowed`).
+
+### Changed
+
+* **Consistent error titles (Title Case)** across the board:
+  *Bad Request*, *Not Found*, *Method Not Allowed*, *Unsupported Media Type*, *Internal Server Error*.
+* **415 message improved**: `check_content_type()` now includes the **received** content type (e.g., `"Content-Type must be application/json; received text/plain; charset=utf-8"`).
+* **Human‑friendly validation messages** in `deserialize()` (no Python type leakage). Examples:
+  `Field 'value' must be an integer`, `Field 'start_date' must be an ISO date (YYYY-MM-DD)`.
+* **`create()` now calls `db.session.flush()` before `commit()`** so a primary key `id` is assigned even when `commit()` is mocked (stabilizes tests and aligns runtime behavior).
+
+### Fixed
+
+* **Pylint W0718** in the 405 handler: replaced broad exception catch with explicit `isinstance(error, MethodNotAllowed)` + safe attribute access.
+
+### Security
+
+* **No internal details are leaked on 500** responses anymore. The 500 handlers return a fixed, generic message (`"Internal Server Error" / "An unexpected error occurred."`) while detailed errors are logged server‑side.
+
+### Tests
+
+* Updated model exception tests to expect **`DatabaseError`** (instead of `DataValidationError`) for `create/update/delete` commit failures.
+* Overall test coverage remains high; behavior is aligned with the new error semantics.
+
+### Migration Notes
+
+* **Client applications**
+
+  * Treat DB failure responses as **500** (server error) rather than 400.
+  * Avoid matching exact error text; rely on the stable JSON shape `{status, error, message}` and HTTP status codes.
+  * For 405 responses, you can now use the **`Allow`** header to guide retries.
+  * For 415 responses, error messages now include the **actual received** content type to speed up diagnosis.
+* **Internal contributors**
+
+  * Use `DatabaseError` only for server‑side DB failures; continue to use `DataValidationError` for request validation errors (400).
+  * Keep new error titles in Title Case and construct responses via `_error()` for consistency.
