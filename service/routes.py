@@ -288,3 +288,20 @@ def check_content_type(content_type: str):
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             f"Content-Type must be {content_type}; received {got}",
         )
+
+
+######################################################################
+# Endpoint: /health (K8s liveness/readiness)
+######################################################################
+@app.route("/health", methods=["GET"])
+def health():
+    """
+    K8s health check endpoint
+    Returns:
+        JSON: {"status": "OK"} with HTTP 200
+    Notes:
+        - Keep this endpoint lightweight and independent of external deps (e.g., DB)
+          so that liveness/readiness probes are stable.
+    """
+    app.logger.info("Health check requested")
+    return jsonify(status="OK"), status.HTTP_200_OK
