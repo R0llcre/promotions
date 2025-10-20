@@ -44,6 +44,7 @@ This version unifies the model query contract and clarifies ambiguous terminolog
 * [CLI Commands](#cli-commands)
 * [Project Structure](#project-structure)
 * [Compatibility Notes](#compatibility-notes)
+* [Kubernetes Smoke Check](#Kubernetes-Smoke-Check)
 * [License](#license)
 
 ---
@@ -113,7 +114,7 @@ k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
 ```bash
 make cluster
 make build
-k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
+make push
 kubectl apply -f k8s/postgres/statefulset.yaml
 kubectl apply -f k8s/postgres/service.yaml
 kubectl apply -f k8s/secrets/promotions-db.yaml
@@ -142,7 +143,7 @@ curl -i -H "Host: promotions.local" http://localhost:8080/health
 3. **Load the image into k3d nodes (skip registry)**
 
    ```bash
-   k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
+    make push
    ```
 4. **Bring up PostgreSQL (StatefulSet + Headless Service)**
 
@@ -602,12 +603,123 @@ README.md            # This file
 ---
 
 
-## CRUD  Screenshots
+## Kubernetes Smoke Check
+**Requirement 3 – Deploy to Kubernetes · K8S-11 (P2)**
 
-![Create](images/create.png)
-![Read](images/read.png)
-![Update](images/update.png)
-![Delete](images/delete.png)
+A one-command smoke test to confirm a healthy deployment.
+
+### What it checks
+- **Pods Ready** — all Pods with `app=promotions` in the target namespace are `Ready`.
+- **Service exists** — `promotions-service`.
+- **Ingress exists** — `promotions-ingress`.
+- **HTTP endpoints (200 OK)** — `GET /health` and `GET /promotions`.  
+  The command uses a temporary `kubectl port-forward` to the Service and, if needed, adds the Ingress **Host** header automatically so host-based routing succeeds.
+
+---
+
+### Prerequisites
+- A running Kubernetes cluster (e.g., **k3d**) and working `kubectl` context.
+- The application already deployed to the cluster.
+- `curl` available in your shell environment.
+
+Quick connectivity test:
+```bash
+kubectl config current-context
+kubectl cluster-info
+kubectl get pods -n default -l app=promotions
+````
+
+---
+
+### Quick start
+
+```bash
+make verify
+```
+
+**Success output (exit code = 0)**
+
+```
+• Using KUBECONFIG=/app/kubeconfig
+k3d-nyu-devops
+• Checking kubectl connectivity...
+• Verifying pods are Ready (label=app=promotions, ns=default)...
+✓ Pods are Ready
+✓ Service exists
+✓ Ingress exists
+• Port-forwarding promotions-service:8080->80 and curling endpoints...
+• Using Host header (if needed): promotions.local
+✓ GET /health -> 200
+✓ GET /promotions -> 200
+
+✓ All smoke checks passed. ✔
+```
+
+---
+
+### Configuration (env vars)
+
+You can override defaults at runtime:
+
+| Variable         | Default              | Description                                                            |
+| ---------------- | -------------------- | ---------------------------------------------------------------------- |
+| `KUBECONFIG`     | `/app/kubeconfig`    | Path to kubeconfig for `kubectl`.                                      |
+| `NS`             | `default`            | Kubernetes namespace to check.                                         |
+| `LABEL_SELECTOR` | `app=promotions`     | Label selector for Pods ready check.                                   |
+| `SERVICE`        | `promotions-service` | Service name to port-forward.                                          |
+| `INGRESS`        | `promotions-ingress` | Ingress name used to auto-detect host.                                 |
+| `INGRESS_HOST`   | *(auto-detect)*      | Override Ingress host (falls back to `promotions.local` if not found). |
+| `VERIFY_PORT`    | `8080`               | Local port for `kubectl port-forward`.                                 |
+| `HEALTH_PATH`    | `/health`            | Health endpoint path.                                                  |
+| `PROMO_PATH`     | `/promotions`        | Listing endpoint path.                                                 |
+
+**Examples**
+
+```bash
+# Different namespace + label
+NS=staging LABEL_SELECTOR="app=promotions" make verify
+
+# Explicit host (bypass auto-detect)
+INGRESS_HOST=promotions.local make verify
+
+# Non-default service name / port
+SERVICE=promotions-svc VERIFY_PORT=9090 make verify
+```
+
+---
+
+### Troubleshooting
+
+* **`kubectl cannot reach the API server`**
+  Your kube context isn’t set in this shell. For k3d:
+
+  ```bash
+  k3d kubeconfig get nyu-devops > /app/kubeconfig
+  export KUBECONFIG=/app/kubeconfig
+  kubectl config use-context k3d-nyu-devops
+  ```
+* **`GET /health -> 404`**
+  Your routing is **host-based**. The verify script auto-detects the Ingress host; if detection fails, set it manually:
+  `INGRESS_HOST=promotions.local make verify`
+* **Port-forward fails or hangs**
+  Ensure the Service exists and the Pod is Running; also check if local port `8080` is already in use.
+* **Pods not Ready / timeout**
+  Inspect events and logs:
+  `kubectl describe pod -n $NS -l $LABEL_SELECTOR`
+  `kubectl logs -n $NS -l $LABEL_SELECTOR --tail=200`
+
+**Exit codes**
+`0` = all checks passed; non-zero = the first failing check’s stage will be printed.
+
+---
+
+### Make Targets (excerpt)
+
+|   Target | Description                                                           |
+| -------: | --------------------------------------------------------------------- |
+| `verify` | Smoke check the Kubernetes deployment (pods, service, ingress, HTTP). |
+
+---
 
 ## License
 
@@ -617,3 +729,5 @@ Copyright (c) 2016, 2025 [John Rofrano](https://www.linkedin.com/in/JohnRofrano/
 Licensed under the Apache License. See [LICENSE](LICENSE)
 
 This repository is part of the New York University (NYU) masters class: **CSCI-GA.2820-001 DevOps and Agile Methodologies** created and taught by [John Rofrano](https://cs.nyu.edu/~rofrano/), Adjunct Instructor, NYU Courant Institute, Graduate Division, Computer Science, and NYU Stern School of Business.
+
+
