@@ -267,3 +267,31 @@ Ensure `pylint` is installed (e.g., `pip install pylint`) before running the scr
 * Clients relying on permissive/ambiguous `?active=` values (e.g., `maybe`, `t`, `2`) will now receive **400**. Update callers to use one of: `true`, `false`, `1`, `0`, `yes`, `no`. 
 * No changes to other query priorities: `id > active > name > product_id > promotion_type > all`. Behavior is unchanged outside the `active` filter. 
 
+
+## 2025-10-20 — [K8S-01] Add application Dockerfile
+
+### Added
+
+* **Dockerfile (root)**: Production-grade image for the Flask service using `python:3.11-slim`, Pipenv (`--system --deploy`), and **Gunicorn** (`wsgi:app`) on port **8080**.
+* **`.dockerignore`**: Reduce build context (ignores VCS, caches, tests, etc.).
+
+### Changed
+
+* *None.* (Packaging only; no app or test code changes.)
+
+
+### Notes / How to verify
+
+```bash
+# Build
+docker build -t cluster-registry:5000/promotions:1.0 .
+
+# Run
+docker run --rm -p 8080:8080 cluster-registry:5000/promotions:1.0
+
+# Verify (expect 200 + service JSON)
+curl -i http://localhost:8080/
+```
+
+* CI remains green (lint/tests/coverage unchanged).
+* Unblocks: **K8S-02** (Makefile image name), **K8S-04/05/06** (Deployment/Service/Ingress), **K8S-03** (/health).
