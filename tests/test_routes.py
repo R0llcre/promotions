@@ -405,7 +405,7 @@ class TestPromotionService(TestCase):
         self.assertEqual(data.get("status"), "OK")
 
     def test_health_endpoint_idempotent_and_lightweight(self):
-        """It should be fast and not depend on DB (smoke: multiple quick calls)"""
+        """It should be fast and not depend on DB (smoke: multiple quick calls) """
         for _ in range(3):
             resp = self.client.get("/health")
             self.assertEqual(resp.status_code, status.HTTP_200_OK)

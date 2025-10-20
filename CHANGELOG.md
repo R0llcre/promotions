@@ -295,3 +295,42 @@ curl -i http://localhost:8080/
 
 * CI remains green (lint/tests/coverage unchanged).
 * Unblocks: **K8S-02** (Makefile image name), **K8S-04/05/06** (Deployment/Service/Ingress), **K8S-03** (/health).
+
+
+## 2025-10-20 — [K8S-02] [K8S-03]
+
+### Added
+- **K8S-03:** Introduced `GET /health` endpoint for Kubernetes probes.  
+  Returns `{"status":"OK"}` with HTTP 200; intentionally lightweight and independent of external dependencies (e.g., DB) to keep liveness/readiness stable.
+- **K8S-03 (Tests):** Added unit tests for `/health`:
+  - Verifies HTTP 200, `application/json` mimetype, and payload `{"status":"OK"}`.
+  - Smoke test for idempotence/lightweight behavior (multiple quick calls).
+
+### Changed
+- **K8S-02:** Updated container image name in `Makefile`:
+  - `IMAGE_NAME` default changed from `petshop` ➜ `promotions`.
+  - Builds and pushes now target `cluster-registry:5000/promotions:1.0`.
+
+### Ops Notes
+- Suggested probe configuration (to be used in Deployment manifests):
+  ```yaml
+  readinessProbe:
+    httpGet: { path: /health, port: 8080 }
+    initialDelaySeconds: 5
+    periodSeconds: 5
+  livenessProbe:
+    httpGet: { path: /health, port: 8080 }
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  ```
+
+### Impact
+
+* **Build/Push:** Use `make build && make push` to produce and publish `cluster-registry:5000/promotions:1.0`.
+* **Runtime:** Probes can safely hit `/health` without flapping due to DB latency.
+
+### Verification
+
+* `pytest -q` passes with coverage unchanged (≥ existing threshold).
+* `docker run --rm -p 8080:8080 cluster-registry:5000/promotions:1.0`
+  `curl -i http://localhost:8080/health` → `200 OK` with `{"status":"OK"}`.
