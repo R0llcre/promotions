@@ -268,10 +268,6 @@ Ensure `pylint` is installed (e.g., `pip install pylint`) before running the scr
 * No changes to other query priorities: `id > active > name > product_id > promotion_type > all`. Behavior is unchanged outside the `active` filter. 
 
 
-下面是一段可直接粘贴到 `CHANGELOG.md` 的条目（**英/中双语**），覆盖本次 **K8S-01：新增应用级 Dockerfile** 变更。
-
----
-
 ## 2025-10-20 — [K8S-01] Add application Dockerfile
 
 ### Added
