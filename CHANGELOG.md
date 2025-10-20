@@ -334,3 +334,135 @@ curl -i http://localhost:8080/
 * `pytest -q` passes with coverage unchanged (≥ existing threshold).
 * `docker run --rm -p 8080:8080 cluster-registry:5000/promotions:1.0`
   `curl -i http://localhost:8080/health` → `200 OK` with `{"status":"OK"}`.
+
+
+## 2025-10-20 — Kubernetes Deployment Track [K8S-04] [K8S-05] [K8S-06] [K8S-07] [K8S-08] [K8S-09]
+
+### K8S-04 — Add Deployment for application
+
+**Added**
+
+* `k8s/deployment.yaml`: Application `Deployment` (`app: promotions`), container port **8080**, image `cluster-registry:5000/promotions:1.0`.
+* Probes: `readinessProbe` / `livenessProbe` targeting **`/health`** (from K8S-03).
+
+**Changed**
+
+* Env: `FLASK_ENV=production`, `PORT=8080`.
+* Temporary hard-coded `DATABASE_URI` to `postgres:5432` (superseded by Secret in K8S-09).
+
+---
+
+### K8S-05 — Add ClusterIP Service for application
+
+**Added**
+
+* `k8s/service.yaml`: `Service` (`name: promotions-service`, `type: ClusterIP`), **`port: 80 → targetPort: http`** (Pod named port maps to 8080).
+
+**Rationale**
+
+* Stable in-cluster endpoint for Ingress; isolates upstream from Pod changes.
+
+---
+
+### K8S-06 — Add Ingress (Traefik / K3D)
+
+**Added**
+
+* `k8s/ingress.yaml`: `Ingress` (`ingressClassName: traefik`, `host: promotions.local`, `path: /` → `promotions-service:80`).
+
+**Docs**
+
+* Access:
+
+  * Quick: `curl -H "Host: promotions.local" http://localhost:8080/...`
+  * Or add `127.0.0.1 promotions.local` to `/etc/hosts` (or use `*.nip.io`).
+
+---
+
+### K8S-07 — Add PostgreSQL StatefulSet (+ Headless Service)
+
+**Added**
+
+* `k8s/postgres/statefulset.yaml`:
+
+  * **Headless Service** `postgres-hl` (`clusterIP: None`) for stable identity.
+  * **StatefulSet** `postgres` (image `postgres:15-alpine`; `POSTGRES_DB=promotions`; PVC 1Gi).
+* Probes: `pg_isready` for readiness/liveness.
+
+**Fixed (CrashLoopBackOff root cause)**
+
+* Data/permissions issues on local paths:
+
+  * **Add** `PGDATA=/var/lib/postgresql/data/pgdata` to avoid `lost+found` at volume root.
+  * **Use only** `securityContext.fsGroup: 999` (remove `runAsUser/runAsGroup`) to fix initdb permissions.
+* Probe tuning: `pg_isready -h 127.0.0.1 -p 5432 -U postgres -d promotions` with forgiving delays.
+
+**Docs**
+
+* If partial init left bad data, **demo-only** reset: scale sts→delete PVC→scale up.
+
+---
+
+### K8S-08 — Add PostgreSQL ClusterIP Service (app-facing)
+
+**Added**
+
+* `k8s/postgres/service.yaml`: DB `Service` (`name: postgres`, `type: ClusterIP`, `port: 5432 → targetPort: postgres`).
+
+**Rationale**
+
+* Stable app connection endpoint, decoupled from Headless Service; matches `DATABASE_URI` host (`postgres`).
+
+---
+
+### K8S-09 — Harden app bootstrap & move DB URI to Secret
+
+**Added**
+
+* `k8s/secrets/promotions-db.yaml`: `Secret promotions-db` with `stringData.DATABASE_URI=postgresql+psycopg://postgres:postgres@postgres:5432/promotions`.
+
+**Changed**
+
+* `k8s/deployment.yaml`:
+
+  * Switch `env.DATABASE_URI` to `valueFrom.secretKeyRef` (no credentials in spec).
+  * **Add** `initContainers.wait-for-postgres` (loop `pg_isready` before app starts).
+  * Keep `/health` probes unchanged.
+
+**Outcome**
+
+* Eliminates “app starts before DB” CrashLoop scenario; improves first-boot/rollout stability and credential hygiene.
+
+---
+
+### Impact & Compatibility
+
+* **Runtime**: No API contract changes; `/health` already present (K8S-03).
+* **Order of operations**: **DB (K8S-07/08) → Secret (K8S-09) → Deployment (K8S-04 updated) → Service (K8S-05) → Ingress (K8S-06)**.
+* **DevContainer note (images)**: If `cluster-registry` isn’t resolvable, prefer `k3d image import` to load images directly into the cluster.
+
+---
+
+### File inventory (added/modified)
+
+**Added**
+
+* `k8s/deployment.yaml` (K8S-04)
+* `k8s/service.yaml` (K8S-05)
+* `k8s/ingress.yaml` (K8S-06)
+* `k8s/postgres/statefulset.yaml` (K8S-07)
+* `k8s/postgres/service.yaml` (K8S-08)
+* `k8s/secrets/promotions-db.yaml` (K8S-09)
+
+**Modified**
+
+* `k8s/postgres/statefulset.yaml` (K8S-07: add `PGDATA`, `fsGroup`, probe tuning)
+* `k8s/deployment.yaml` (K8S-09: `secretKeyRef` + `initContainer`)
+
+**Done criteria**
+
+* `kubectl get pods`: `postgres-0` and app Pod **READY 1/1**
+* `curl -H "Host: promotions.local" http://localhost:8080/health` → **200 + {"status":"OK"}**
+* App can read/write DB via `/promotions` APIs
+
+**Breaking changes**: None.
