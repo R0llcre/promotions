@@ -23,6 +23,7 @@ This version unifies the model query contract and clarifies ambiguous terminolog
 ## Table of Contents
 
 * [Overview](#overview)
+* [Deploy to Kubernetes](#Deploy-to-Kubernetes)
 * [Architecture](#architecture)
 * [Requirements](#requirements)
 * [Quick Start](#quick-start)
@@ -58,6 +59,218 @@ Key features:
 * **Multiple list filters** with deterministic **priority** when multiple query parameters are supplied.
 * **Robust validation** and **uniform error responses** for common failure scenarios.
 * **High test coverage** (threshold ≥ 95%) across success and error paths.
+
+---
+
+## Deploy to Kubernetes
+
+**Scope.** Deploy the Promotions microservice with PostgreSQL to a local K3D/K3S cluster and expose it via an Ingress.
+**Defaults.** App listens on `8080`. `make cluster` maps the cluster LB `:80` → host `:8080`.
+
+### Architecture (at a glance)
+
+* **App**: Flask + Gunicorn (`wsgi:app`), `/health` for probes
+* **DB**: PostgreSQL (StatefulSet + PVC)
+* **Networking**: `promotions-service` (ClusterIP, `80 → 8080`), `promotions-ingress` (host routing)
+* **Config**: `DATABASE_URI` injected from a Kubernetes Secret
+
+---
+
+### Prerequisites
+
+* Docker, kubectl, k3d (or use this repo’s DevContainer)
+* Repo contains:
+
+  * `Dockerfile` (root; production image with Gunicorn on `8080`)
+  * `Makefile` with `IMAGE_NAME ?= promotions`
+  * `/health` endpoint in `service/routes.py`
+  * K8s manifests:
+
+    * `k8s/deployment.yaml` (app + probes + initContainer + Secret env)
+    * `k8s/service.yaml` (`promotions-service`)
+    * `k8s/ingress.yaml` (host `promotions.local`, Traefik)
+    * `k8s/postgres/statefulset.yaml` (with `PGDATA` subfolder + `fsGroup`)
+    * `k8s/postgres/service.yaml` (`postgres` ClusterIP)
+    * `k8s/secrets/promotions-db.yaml` (Secret with `DATABASE_URI`)
+
+---
+
+### Make Targets (cheat-sheet)
+
+```bash
+make cluster   # Create/ensure local K3D cluster (LB:80 → host:8080) + local registry
+make build     # Build image from Dockerfile → cluster-registry:5000/promotions:1.0
+# (Tip) Prefer direct import instead of pushing:
+k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
+```
+
+> Why “import”? Inside DevContainers, the name `cluster-registry` may not resolve. Importing the local image straight into k3d nodes avoids DNS/registry setup entirely.
+
+---
+
+### Quick Start (copy & paste)
+
+```bash
+make cluster
+make build
+k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
+kubectl apply -f k8s/postgres/statefulset.yaml
+kubectl apply -f k8s/postgres/service.yaml
+kubectl apply -f k8s/secrets/promotions-db.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
+curl -i -H "Host: promotions.local" http://localhost:8080/health
+```
+
+**Expected:** `HTTP/1.1 200 OK` and `{"status":"OK"}`.
+
+---
+
+### Step-by-Step (with intent)
+
+1. **Create/ensure cluster & LB mapping**
+
+   ```bash
+   make cluster
+   ```
+2. **Build the app image**
+
+   ```bash
+   make build
+   ```
+3. **Load the image into k3d nodes (skip registry)**
+
+   ```bash
+   k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
+   ```
+4. **Bring up PostgreSQL (StatefulSet + Headless Service)**
+
+   ```bash
+   kubectl apply -f k8s/postgres/statefulset.yaml
+   ```
+5. **Expose DB via ClusterIP `postgres:5432`**
+
+   ```bash
+   kubectl apply -f k8s/postgres/service.yaml
+   ```
+6. **Wait until DB is Ready**
+
+   ```bash
+   kubectl get pods -l app=postgres -w
+   ```
+7. **Create app DB Secret (`DATABASE_URI`)**
+
+   ```bash
+   kubectl apply -f k8s/secrets/promotions-db.yaml
+   ```
+8. **Deploy app (initContainer waits for DB, probes on `/health`)**
+
+   ```bash
+   kubectl apply -f k8s/deployment.yaml
+   ```
+9. **Create app Service (`80 → 8080`)**
+
+   ```bash
+   kubectl apply -f k8s/service.yaml
+   ```
+10. **Create Ingress (host `promotions.local`)**
+
+    ```bash
+    kubectl apply -f k8s/ingress.yaml
+    ```
+11. **Verify app pod is Ready**
+
+    ```bash
+    kubectl get pods -l app=promotions -w
+    ```
+
+---
+
+### Validate
+
+**Option A (no `/etc/hosts` edit):**
+
+```bash
+curl -i -H "Host: promotions.local" http://localhost:8080/health
+```
+
+**Option B (edit hosts once):**
+
+```bash
+echo "127.0.0.1 promotions.local" | sudo tee -a /etc/hosts
+curl -i http://promotions.local:8080/health
+```
+
+---
+
+### Troubleshooting
+
+**Postgres CrashLoopBackOff (initdb fails)**
+Symptoms: `directory ... exists but is not empty (lost+found)` or permission errors.
+
+* Already mitigated in `statefulset.yaml`:
+
+  * `PGDATA=/var/lib/postgresql/data/pgdata` (subfolder avoids `lost+found`)
+  * `securityContext.fsGroup=999` (write access for `postgres`)
+* If half-initialized PVC persists (demo only):
+
+  ```bash
+  kubectl scale statefulset postgres --replicas=0
+  kubectl delete pvc pgdata-postgres-0
+  kubectl scale statefulset postgres --replicas=1
+  ```
+
+**Ingress 404**
+
+* Use Host header or add `/etc/hosts` for `promotions.local`.
+* Ensure `ingressClassName: traefik` matches your controller.
+* Bypass Ingress to isolate:
+
+  ```bash
+  kubectl port-forward svc/promotions-service 8088:80
+  curl -i http://127.0.0.1:8088/health
+  ```
+
+**App cannot reach DB**
+
+* Check DB Service & pod readiness: `kubectl get svc postgres`, `kubectl get pods -l app=postgres`.
+* Verify Secret: `kubectl get secret promotions-db -o yaml` (has `DATABASE_URI`).
+* App logs: `kubectl logs deploy/promotions-deployment`.
+* Nudge rollout:
+
+  ```bash
+  kubectl rollout restart deploy/promotions-deployment
+  ```
+
+---
+
+### Cleanup
+
+```bash
+kubectl delete -f k8s/ingress.yaml
+kubectl delete -f k8s/service.yaml
+kubectl delete -f k8s/deployment.yaml
+kubectl delete -f k8s/postgres/service.yaml
+kubectl delete -f k8s/postgres/statefulset.yaml
+kubectl delete -f k8s/secrets/promotions-db.yaml
+# (Optional) delete data:
+# kubectl delete pvc pgdata-postgres-0
+```
+
+---
+
+### File Inventory (for reviewers)
+
+* `Dockerfile` (root)
+* `Makefile` (`IMAGE_NAME ?= promotions`)
+* `service/routes.py` (`/health`)
+* `k8s/postgres/statefulset.yaml` (PGDATA subfolder + fsGroup + probes)
+* `k8s/postgres/service.yaml` (`postgres` ClusterIP)
+* `k8s/secrets/promotions-db.yaml` (Secret with `DATABASE_URI`)
+* `k8s/deployment.yaml` (initContainer + probes + Secret env)
+* `k8s/service.yaml` (`promotions-service`)
+* `k8s/ingress.yaml` (`promotions.local` → `promotions-service:80`)
 
 ---
 
