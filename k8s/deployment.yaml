@@ -17,6 +17,25 @@ spec:
         app: promotions
     spec:
       terminationGracePeriodSeconds: 30
+
+      # Wait for the database to be ready before starting the app container to avoid CrashLoop
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Postgres at postgres:5432 ..."
+              until pg_isready -h postgres -p 5432 -d promotions; do
+                echo "Postgres is not ready yet. Sleeping 2s..."
+                sleep 2
+              done
+              echo "Postgres is ready!"
+          # If your PG is configured with strict authentication, inject the user arg here: -U postgres
+          # pg_isready only checks "accepting connections" and usually does not require a password
+
       containers:
         - name: promotions
           image: cluster-registry:5000/promotions:1.0
@@ -26,14 +45,16 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
-            # Explicitly set runtime mode and port (wsgi.py also defaults to 8080; being explicit is clearer)
             - name: FLASK_ENV
               value: "production"
             - name: PORT
               value: "8080"
-            # Connect to the in-cluster Postgres (K8S-07/08 will create a Service named `postgres`)
+            # Inject DATABASE_URI from Secret (replaces the previous hardcoded value)
             - name: DATABASE_URI
-              value: "postgresql+psycopg://postgres:postgres@postgres:5432/promotions"
+              valueFrom:
+                secretKeyRef:
+                  name: promotions-db
+                  key: DATABASE_URI
           readinessProbe:
             httpGet:
               path: /health
@@ -50,7 +71,8 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 2
             failureThreshold: 3
-          # If you need to control resources on the remote cluster, add requests/limits in K8S-13
+
+          # If you need resource constraints, add requests/limits in K8S-13
           # resources:
           #   requests:
           #     cpu: "100m"
