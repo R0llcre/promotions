@@ -9,7 +9,7 @@ metadata:
   labels:
     app: postgres
 spec:
-  clusterIP: None                 # Headless service
+  clusterIP: None
   selector:
     app: postgres
   ports:
@@ -18,7 +18,7 @@ spec:
       targetPort: 5432
 ---
 # -----------------------------------------------
-# PostgreSQL StatefulSet
+# PostgreSQL StatefulSet (revised)
 # -----------------------------------------------
 apiVersion: apps/v1
 kind: StatefulSet
@@ -28,7 +28,7 @@ metadata:
   labels:
     app: postgres
 spec:
-  serviceName: postgres-hl        # Bind to the Headless Service above
+  serviceName: postgres-hl
   replicas: 1
   selector:
     matchLabels:
@@ -38,11 +38,9 @@ spec:
       labels:
         app: postgres
     spec:
-      # Avoid local storage permission issues (common with local-path scenarios)
+      # Keep only fsGroup to avoid permission issues
       securityContext:
-        runAsUser: 999            # UID of the postgres user
-        runAsGroup: 999
-        fsGroup: 999              # Make the mounted volume writable by the postgres group
+        fsGroup: 999
       containers:
         - name: postgres
           image: postgres:15-alpine
@@ -52,24 +50,27 @@ spec:
               containerPort: 5432
               protocol: TCP
           env:
+            # Key: put the data directory in a subdirectory to avoid lost+found
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_DB
-              value: "promotions"        # Database name (aligned with the service resource name)
+              value: "promotions"
             - name: POSTGRES_USER
               value: "postgres"
             - name: POSTGRES_PASSWORD
               value: "postgres"
-          # Readiness and liveness probes (using pg_isready)
+          # Use pg_isready probes; specifying 127.0.0.1 is more robust
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "postgres", "-d", "promotions"]
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "promotions"]
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 6
+            failureThreshold: 12
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "postgres", "-d", "promotions"]
-            initialDelaySeconds: 20
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "promotions"]
+            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 6
@@ -81,9 +82,8 @@ spec:
         name: pgdata
       spec:
         accessModes: ["ReadWriteOnce"]
-        # Leave empty to use the default StorageClass (K3D/K3S is usually local-path)
-        # If you need to specify one explicitly, uncomment and set your StorageClass name:
-        # storageClassName: local-path
         resources:
           requests:
             storage: 1Gi
+        # If your cluster has no default StorageClass, specify it explicitly here:
+        # storageClassName: local-path
