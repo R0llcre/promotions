@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - master
+      - 'milestone/**'
   pull_request:
     branches:
       - master
+      - 'milestone/**'
 
 jobs:
   build:
