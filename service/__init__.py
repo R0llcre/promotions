@@ -60,4 +60,8 @@ def create_app():
 
         app.logger.info("Service initialized!")
 
+        # Register the admin UI blueprint (R4-01)
+        from service.ui import ui_bp  # add this import
+        app.register_blueprint(ui_bp)  # register the admin UI blueprint
+
         return app

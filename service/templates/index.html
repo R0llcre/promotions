@@ -1,0 +1,27 @@
+<!-- service/templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ title or "Promotions Admin" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --fg:#222; --muted:#666; --bd:#e5e5e5; --pad:16px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+           color: var(--fg); margin: 24px; }
+    header { margin-bottom: 8px; }
+    h1 { font-size: 1.6rem; margin: 0 0 4px; }
+    p.muted { color: var(--muted); margin-top: 4px; }
+    main { border:1px solid var(--bd); border-radius: 8px; padding: var(--pad); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">{{ title or "Promotions Admin" }}</h1>
+    <p class="muted">Administrator console – UI skeleton for R4‑01</p>
+  </header>
+  <main>
+    <p>This is the admin UI skeleton. R4‑03…R4‑09 will add Create/Read/Update/Delete/List/Query/Action sections here.</p>
+  </main>
+</body>
+</html>
