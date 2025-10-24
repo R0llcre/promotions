@@ -23,6 +23,7 @@ This version unifies the model query contract and clarifies ambiguous terminolog
 ## Table of Contents
 
 * [Overview](#overview)
+* [Deploy to Kubernetes](#Deploy-to-Kubernetes)
 * [Architecture](#architecture)
 * [Requirements](#requirements)
 * [Quick Start](#quick-start)
@@ -43,6 +44,8 @@ This version unifies the model query contract and clarifies ambiguous terminolog
 * [CLI Commands](#cli-commands)
 * [Project Structure](#project-structure)
 * [Compatibility Notes](#compatibility-notes)
+* [Kubernetes Smoke Check](#Kubernetes-Smoke-Check)
+* [Appendix: Minikube Compatibility Notes](#Appendix-Minikube-Compatibility-Notes)
 * [License](#license)
 
 ---
@@ -58,6 +61,218 @@ Key features:
 * **Multiple list filters** with deterministic **priority** when multiple query parameters are supplied.
 * **Robust validation** and **uniform error responses** for common failure scenarios.
 * **High test coverage** (threshold ≥ 95%) across success and error paths.
+
+---
+
+## Deploy to Kubernetes
+
+**Scope.** Deploy the Promotions microservice with PostgreSQL to a local K3D/K3S cluster and expose it via an Ingress.
+**Defaults.** App listens on `8080`. `make cluster` maps the cluster LB `:80` → host `:8080`.
+
+### Architecture (at a glance)
+
+* **App**: Flask + Gunicorn (`wsgi:app`), `/health` for probes
+* **DB**: PostgreSQL (StatefulSet + PVC)
+* **Networking**: `promotions-service` (ClusterIP, `80 → 8080`), `promotions-ingress` (host routing)
+* **Config**: `DATABASE_URI` injected from a Kubernetes Secret
+
+---
+
+### Prerequisites
+
+* Docker, kubectl, k3d (or use this repo’s DevContainer)
+* Repo contains:
+
+  * `Dockerfile` (root; production image with Gunicorn on `8080`)
+  * `Makefile` with `IMAGE_NAME ?= promotions`
+  * `/health` endpoint in `service/routes.py`
+  * K8s manifests:
+
+    * `k8s/deployment.yaml` (app + probes + initContainer + Secret env)
+    * `k8s/service.yaml` (`promotions-service`)
+    * `k8s/ingress.yaml` (host `promotions.local`, Traefik)
+    * `k8s/postgres/statefulset.yaml` (with `PGDATA` subfolder + `fsGroup`)
+    * `k8s/postgres/service.yaml` (`postgres` ClusterIP)
+    * `k8s/secrets/promotions-db.yaml` (Secret with `DATABASE_URI`)
+
+---
+
+### Make Targets (cheat-sheet)
+
+```bash
+make cluster   # Create/ensure local K3D cluster (LB:80 → host:8080) + local registry
+make build     # Build image from Dockerfile → cluster-registry:5000/promotions:1.0
+# (Tip) Prefer direct import instead of pushing:
+k3d image import cluster-registry:5000/promotions:1.0 -c nyu-devops
+```
+
+> Why “import”? Inside DevContainers, the name `cluster-registry` may not resolve. Importing the local image straight into k3d nodes avoids DNS/registry setup entirely.
+
+---
+
+### Quick Start (copy & paste)
+
+```bash
+make cluster
+make build
+make push
+kubectl apply -f k8s/postgres/statefulset.yaml
+kubectl apply -f k8s/postgres/service.yaml
+kubectl apply -f k8s/secrets/promotions-db.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
+curl -i -H "Host: promotions.local" http://localhost:8080/health
+```
+
+**Expected:** `HTTP/1.1 200 OK` and `{"status":"OK"}`.
+
+---
+
+### Step-by-Step (with intent)
+
+1. **Create/ensure cluster & LB mapping**
+
+   ```bash
+   make cluster
+   ```
+2. **Build the app image**
+
+   ```bash
+   make build
+   ```
+3. **Load the image into k3d nodes (skip registry)**
+
+   ```bash
+    make push
+   ```
+4. **Bring up PostgreSQL (StatefulSet + Headless Service)**
+
+   ```bash
+   kubectl apply -f k8s/postgres/statefulset.yaml
+   ```
+5. **Expose DB via ClusterIP `postgres:5432`**
+
+   ```bash
+   kubectl apply -f k8s/postgres/service.yaml
+   ```
+6. **Wait until DB is Ready**
+
+   ```bash
+   kubectl get pods -l app=postgres -w
+   ```
+7. **Create app DB Secret (`DATABASE_URI`)**
+
+   ```bash
+   kubectl apply -f k8s/secrets/promotions-db.yaml
+   ```
+8. **Deploy app (initContainer waits for DB, probes on `/health`)**
+
+   ```bash
+   kubectl apply -f k8s/deployment.yaml
+   ```
+9. **Create app Service (`80 → 8080`)**
+
+   ```bash
+   kubectl apply -f k8s/service.yaml
+   ```
+10. **Create Ingress (host `promotions.local`)**
+
+    ```bash
+    kubectl apply -f k8s/ingress.yaml
+    ```
+11. **Verify app pod is Ready**
+
+    ```bash
+    kubectl get pods -l app=promotions -w
+    ```
+
+---
+
+### Validate
+
+**Option A (no `/etc/hosts` edit):**
+
+```bash
+curl -i -H "Host: promotions.local" http://localhost:8080/health
+```
+
+**Option B (edit hosts once):**
+
+```bash
+echo "127.0.0.1 promotions.local" | sudo tee -a /etc/hosts
+curl -i http://promotions.local:8080/health
+```
+
+---
+
+### Troubleshooting
+
+**Postgres CrashLoopBackOff (initdb fails)**
+Symptoms: `directory ... exists but is not empty (lost+found)` or permission errors.
+
+* Already mitigated in `statefulset.yaml`:
+
+  * `PGDATA=/var/lib/postgresql/data/pgdata` (subfolder avoids `lost+found`)
+  * `securityContext.fsGroup=999` (write access for `postgres`)
+* If half-initialized PVC persists (demo only):
+
+  ```bash
+  kubectl scale statefulset postgres --replicas=0
+  kubectl delete pvc pgdata-postgres-0
+  kubectl scale statefulset postgres --replicas=1
+  ```
+
+**Ingress 404**
+
+* Use Host header or add `/etc/hosts` for `promotions.local`.
+* Ensure `ingressClassName: traefik` matches your controller.
+* Bypass Ingress to isolate:
+
+  ```bash
+  kubectl port-forward svc/promotions-service 8088:80
+  curl -i http://127.0.0.1:8088/health
+  ```
+
+**App cannot reach DB**
+
+* Check DB Service & pod readiness: `kubectl get svc postgres`, `kubectl get pods -l app=postgres`.
+* Verify Secret: `kubectl get secret promotions-db -o yaml` (has `DATABASE_URI`).
+* App logs: `kubectl logs deploy/promotions-deployment`.
+* Nudge rollout:
+
+  ```bash
+  kubectl rollout restart deploy/promotions-deployment
+  ```
+
+---
+
+### Cleanup
+
+```bash
+kubectl delete -f k8s/ingress.yaml
+kubectl delete -f k8s/service.yaml
+kubectl delete -f k8s/deployment.yaml
+kubectl delete -f k8s/postgres/service.yaml
+kubectl delete -f k8s/postgres/statefulset.yaml
+kubectl delete -f k8s/secrets/promotions-db.yaml
+# (Optional) delete data:
+# kubectl delete pvc pgdata-postgres-0
+```
+
+---
+
+### File Inventory (for reviewers)
+
+* `Dockerfile` (root)
+* `Makefile` (`IMAGE_NAME ?= promotions`)
+* `service/routes.py` (`/health`)
+* `k8s/postgres/statefulset.yaml` (PGDATA subfolder + fsGroup + probes)
+* `k8s/postgres/service.yaml` (`postgres` ClusterIP)
+* `k8s/secrets/promotions-db.yaml` (Secret with `DATABASE_URI`)
+* `k8s/deployment.yaml` (initContainer + probes + Secret env)
+* `k8s/service.yaml` (`promotions-service`)
+* `k8s/ingress.yaml` (`promotions.local` → `promotions-service:80`)
 
 ---
 
@@ -389,12 +604,384 @@ README.md            # This file
 ---
 
 
-## CRUD  Screenshots
+## Kubernetes Smoke Check
+**Requirement 3 – Deploy to Kubernetes · K8S-11 (P2)**
 
-![Create](images/create.png)
-![Read](images/read.png)
-![Update](images/update.png)
-![Delete](images/delete.png)
+A one-command smoke test to confirm a healthy deployment.
+
+### What it checks
+- **Pods Ready** — all Pods with `app=promotions` in the target namespace are `Ready`.
+- **Service exists** — `promotions-service`.
+- **Ingress exists** — `promotions-ingress`.
+- **HTTP endpoints (200 OK)** — `GET /health` and `GET /promotions`.  
+  The command uses a temporary `kubectl port-forward` to the Service and, if needed, adds the Ingress **Host** header automatically so host-based routing succeeds.
+
+---
+
+### Prerequisites
+- A running Kubernetes cluster (e.g., **k3d**) and working `kubectl` context.
+- The application already deployed to the cluster.
+- `curl` available in your shell environment.
+
+Quick connectivity test:
+```bash
+kubectl config current-context
+kubectl cluster-info
+kubectl get pods -n default -l app=promotions
+````
+
+---
+
+### Quick start
+
+```bash
+make verify
+```
+
+**Success output (exit code = 0)**
+
+```
+• Using KUBECONFIG=/app/kubeconfig
+k3d-nyu-devops
+• Checking kubectl connectivity...
+• Verifying pods are Ready (label=app=promotions, ns=default)...
+✓ Pods are Ready
+✓ Service exists
+✓ Ingress exists
+• Port-forwarding promotions-service:8080->80 and curling endpoints...
+• Using Host header (if needed): promotions.local
+✓ GET /health -> 200
+✓ GET /promotions -> 200
+
+✓ All smoke checks passed. ✔
+```
+
+---
+
+### Configuration (env vars)
+
+You can override defaults at runtime:
+
+| Variable         | Default              | Description                                                            |
+| ---------------- | -------------------- | ---------------------------------------------------------------------- |
+| `KUBECONFIG`     | `/app/kubeconfig`    | Path to kubeconfig for `kubectl`.                                      |
+| `NS`             | `default`            | Kubernetes namespace to check.                                         |
+| `LABEL_SELECTOR` | `app=promotions`     | Label selector for Pods ready check.                                   |
+| `SERVICE`        | `promotions-service` | Service name to port-forward.                                          |
+| `INGRESS`        | `promotions-ingress` | Ingress name used to auto-detect host.                                 |
+| `INGRESS_HOST`   | *(auto-detect)*      | Override Ingress host (falls back to `promotions.local` if not found). |
+| `VERIFY_PORT`    | `8080`               | Local port for `kubectl port-forward`.                                 |
+| `HEALTH_PATH`    | `/health`            | Health endpoint path.                                                  |
+| `PROMO_PATH`     | `/promotions`        | Listing endpoint path.                                                 |
+
+**Examples**
+
+```bash
+# Different namespace + label
+NS=staging LABEL_SELECTOR="app=promotions" make verify
+
+# Explicit host (bypass auto-detect)
+INGRESS_HOST=promotions.local make verify
+
+# Non-default service name / port
+SERVICE=promotions-svc VERIFY_PORT=9090 make verify
+```
+
+---
+
+### Troubleshooting
+
+* **`kubectl cannot reach the API server`**
+  Your kube context isn’t set in this shell. For k3d:
+
+  ```bash
+  k3d kubeconfig get nyu-devops > /app/kubeconfig
+  export KUBECONFIG=/app/kubeconfig
+  kubectl config use-context k3d-nyu-devops
+  ```
+* **`GET /health -> 404`**
+  Your routing is **host-based**. The verify script auto-detects the Ingress host; if detection fails, set it manually:
+  `INGRESS_HOST=promotions.local make verify`
+* **Port-forward fails or hangs**
+  Ensure the Service exists and the Pod is Running; also check if local port `8080` is already in use.
+* **Pods not Ready / timeout**
+  Inspect events and logs:
+  `kubectl describe pod -n $NS -l $LABEL_SELECTOR`
+  `kubectl logs -n $NS -l $LABEL_SELECTOR --tail=200`
+
+**Exit codes**
+`0` = all checks passed; non-zero = the first failing check’s stage will be printed.
+
+---
+
+### Make Targets (excerpt)
+
+|   Target | Description                                                           |
+| -------: | --------------------------------------------------------------------- |
+| `verify` | Smoke check the Kubernetes deployment (pods, service, ingress, HTTP). |
+
+---
+
+
+# Appendix: Minikube Compatibility Notes
+
+This appendix describes how to run the Promotions Service on **Minikube** instead of K3D. It covers image visibility, ingress differences, and fallback access methods.
+
+> Target audience: developers using Minikube locally
+> Goal: build an image discoverable by the cluster and access the app via **Ingress** (recommended) or **NodePort/port-forward**.
+
+---
+
+## Prerequisites
+
+* Minikube v1.30+ with a Kubernetes version compatible with your manifests
+* `kubectl` installed and pointed at your Minikube context
+* (Optional) GNU Make if you use provided `make` targets
+* Docker (or container runtime supported by Minikube)
+
+---
+
+## Quick Start (TL;DR)
+
+```bash
+# 0) Start Minikube and enable NGINX Ingress
+minikube start
+minikube addons enable ingress
+kubectl wait -n ingress-nginx --for=condition=Ready pods \
+  -l app.kubernetes.io/component=controller --timeout=120s
+
+# 1) Make your image visible to Minikube (choose ONE approach below)
+#    A) Build inside Minikube’s Docker
+eval $(minikube -p minikube docker-env)
+# If you have a Makefile build target:
+make build
+# Or plain Docker (example):
+# docker build -t promotions:local .
+# (Optional) Restore your shell environment after building:
+unset DOCKER_TLS_VERIFY DOCKER_HOST DOCKER_CERT_PATH MINIKUBE_ACTIVE_DOCKERD
+
+#    B) OR: Load an already-built local image into Minikube
+# minikube image load promotions:local
+# minikube image load cluster-registry:5000/promotions:1.0
+
+#    C) OR: Retag and patch Deployment to use a tag you control (see details below)
+
+# 2) Deploy manifests (same manifests as K3D)
+kubectl apply -f k8s/postgres/statefulset.yaml
+kubectl apply -f k8s/postgres/service.yaml
+kubectl apply -f k8s/secrets/promotions-db.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+# 3) Ingress for Minikube uses NGINX (not Traefik)
+kubectl apply -f k8s/ingress.yaml
+# Ensure ingress class is "nginx":
+kubectl patch ingress promotions-ingress --type=merge -p '{"spec":{"ingressClassName":"nginx"}}'
+# (If your manifest uses the legacy annotation instead, overwrite it:)
+kubectl annotate ingress promotions-ingress kubernetes.io/ingress.class=nginx --overwrite
+
+# 4) Add local DNS entry for host routing
+echo "$(minikube ip) promotions.local" | sudo tee -a /etc/hosts
+
+# 5) Verify
+kubectl rollout status deploy/promotions-deployment
+curl -i http://promotions.local/health      # Expect: HTTP/1.1 200 OK
+```
+
+---
+
+## Differences vs K3D
+
+| Topic                 | K3D (Course Default)         | Minikube (This Appendix)                           |
+| --------------------- | ---------------------------- | -------------------------------------------------- |
+| Ingress controller    | Traefik                      | NGINX (via `minikube addons enable ingress`)       |
+| Ingress class         | `traefik`                    | `nginx` (patch/annotation may be required)         |
+| Registry/image flow   | Push to K3D’s local registry | Build inside Minikube **or** `minikube image load` |
+| Hostname resolution   | `/etc/hosts` → K3D LB IP     | `/etc/hosts` → `minikube ip`                       |
+| LoadBalancer behavior | Real LB via K3D              | Requires `minikube tunnel` if you use LB services  |
+
+---
+
+## Making Images Visible to Minikube
+
+Choose one of the following:
+
+### A) Build inside Minikube’s Docker (recommended for simplicity)
+
+```bash
+eval $(minikube -p minikube docker-env)
+# If Makefile exists:
+make build
+# Or:
+# docker build -t promotions:local .
+unset DOCKER_TLS_VERIFY DOCKER_HOST DOCKER_CERT_PATH MINIKUBE_ACTIVE_DOCKERD
+```
+
+**If you built as `promotions:local`,** ensure your Deployment uses that name:
+
+```bash
+kubectl set image deploy/promotions-deployment promotions=promotions:local
+```
+
+> Tip: Ensure `imagePullPolicy: IfNotPresent` in your Deployment to avoid unnecessary pulls.
+
+### B) Load a prebuilt image into Minikube
+
+```bash
+# Example tags accepted (with or without registry prefixes)
+minikube image load promotions:local
+minikube image load cluster-registry:5000/promotions:1.0
+```
+
+### C) Retag and patch your Deployment image
+
+```bash
+# Retag locally (if needed)
+# docker tag your/source:tag promotions:local
+
+# Patch the running Deployment to your tag
+kubectl set image deploy/promotions-deployment promotions=promotions:local
+```
+
+---
+
+## Ingress on Minikube (NGINX)
+
+Enable and wait for the controller:
+
+```bash
+minikube addons enable ingress
+kubectl wait -n ingress-nginx --for=condition=Ready pods \
+  -l app.kubernetes.io/component=controller --timeout=120s
+```
+
+Ensure your Ingress resource targets the **nginx** class:
+
+```bash
+kubectl patch ingress promotions-ingress --type=merge -p '{"spec":{"ingressClassName":"nginx"}}'
+# or (legacy annotation)
+kubectl annotate ingress promotions-ingress kubernetes.io/ingress.class=nginx --overwrite
+```
+
+Add an `/etc/hosts` entry mapping your Minikube IP to the host used in `ingress.yaml` (e.g., `promotions.local`):
+
+```bash
+echo "$(minikube ip) promotions.local" | sudo tee -a /etc/hosts
+```
+
+Verify:
+
+```bash
+curl -i http://promotions.local/health
+curl -i http://promotions.local/promotions
+```
+
+> **Note:** You usually do **not** need `minikube tunnel` for NGINX Ingress. Run the tunnel only if you rely on `Service.type=LoadBalancer` elsewhere.
+
+---
+
+## Fallback Access Methods
+
+### Fallback A: NodePort
+
+```bash
+kubectl patch svc promotions-service -p '{"spec":{"type":"NodePort"}}'
+export NODE_PORT=$(kubectl get svc promotions-service -o jsonpath='{.spec.ports[0].nodePort}')
+export NODE_IP=$(minikube ip)
+curl -i "http://${NODE_IP}:${NODE_PORT}/health"
+```
+
+Or let Minikube print the URL:
+
+```bash
+minikube service promotions-service --url
+```
+
+### Fallback B: Local port-forward
+
+```bash
+kubectl port-forward svc/promotions-service 8080:80
+curl -i http://127.0.0.1:8080/health
+```
+
+---
+
+## Troubleshooting
+
+* **`ImagePullBackOff` / `ErrImagePull`**
+
+  * Confirm the image tag in the Deployment matches what you built/loaded.
+  * Use `kubectl describe pod <pod>` to see which image is being requested.
+  * Re-run **A** or **B** above and ensure `imagePullPolicy: IfNotPresent`.
+
+* **Ingress returns 404 (default backend)**
+
+  * Check that the **host** in your Ingress matches `/etc/hosts` (e.g., `promotions.local`).
+  * Ensure the **ingress class** is `nginx` (patch/annotate as shown).
+  * Verify the `Service` name/port in Ingress backend matches `promotions-service:80`.
+
+* **Database not ready / app CrashLoop**
+
+  * Confirm Postgres StatefulSet is Ready:
+
+    ```bash
+    kubectl get pods -l app=postgres
+    kubectl logs statefulset/postgres
+    ```
+  * Ensure DB Secret (`k8s/secrets/promotions-db.yaml`) is applied and env vars match the app.
+
+* **Cannot reach via host name**
+
+  * Re-add hosts mapping: `echo "$(minikube ip) promotions.local" | sudo tee -a /etc/hosts`
+  * Test by IP + NodePort to isolate DNS/hosts issues.
+
+---
+
+## Acceptance Checklist (copy/paste)
+
+```bash
+# Image is visible to the cluster
+kubectl get pods -l app=promotions
+kubectl describe pod -l app=promotions | egrep -i 'image:|reason|message'
+
+# Ingress reachable (preferred)
+curl -i http://promotions.local/health | head -n 1  # expect 200
+
+# OR NodePort fallback
+NODE_IP=$(minikube ip)
+NODE_PORT=$(kubectl get svc promotions-service -o jsonpath='{.spec.ports[0].nodePort}')
+curl -i "http://${NODE_IP}:${NODE_PORT}/health" | head -n 1  # expect 200
+
+# OR port-forward fallback
+kubectl port-forward svc/promotions-service 8080:80 &
+sleep 2
+curl -i http://127.0.0.1:8080/health | head -n 1      # expect 200
+```
+
+---
+
+## Cleanup
+
+```bash
+kubectl delete -f k8s/ingress.yaml --ignore-not-found
+kubectl delete -f k8s/service.yaml --ignore-not-found
+kubectl delete -f k8s/deployment.yaml --ignore-not-found
+kubectl delete -f k8s/secrets/promotions-db.yaml --ignore-not-found
+kubectl delete -f k8s/postgres/statefulset.yaml --ignore-not-found
+kubectl delete -f k8s/postgres/service.yaml --ignore-not-found
+
+# Optional: stop/remove Minikube
+minikube stop
+# minikube delete
+```
+
+---
+
+### Notes
+
+* If your manifests explicitly set `ingressClassName: traefik`, change it to `nginx` for Minikube or use the `kubectl patch` shown above.
+* If your K3D flow expects an internal registry (e.g., `cluster-registry:5000/...`), it still works on Minikube as long as you **build inside Minikube** or **load the image** with `minikube image load` using the same tag. Alternatively, retag to `promotions:local` and update the Deployment image.
+
 
 ## License
 
@@ -404,3 +991,5 @@ Copyright (c) 2016, 2025 [John Rofrano](https://www.linkedin.com/in/JohnRofrano/
 Licensed under the Apache License. See [LICENSE](LICENSE)
 
 This repository is part of the New York University (NYU) masters class: **CSCI-GA.2820-001 DevOps and Agile Methodologies** created and taught by [John Rofrano](https://cs.nyu.edu/~rofrano/), Adjunct Instructor, NYU Courant Institute, Graduate Division, Computer Science, and NYU Stern School of Business.
+
+

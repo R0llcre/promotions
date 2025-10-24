@@ -1,0 +1,21 @@
+# ======== promotions-master/.dockerignore ========
+.git
+.github
+.devcontainer
+__pycache__/
+*.pyc
+.env
+.flaskenv
+*.log
+.coverage
+htmlcov
+.cache
+.mypy_cache
+pytest_cache
+dist
+build
+.eggs
+*.egg-info
+# Test and documentation assets (remove this block if you need them kept in the image)
+tests
+images

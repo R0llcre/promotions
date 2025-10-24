@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promotions-ingress
+  namespace: default
+  labels:
+    app: promotions
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: promotions.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: promotions-service
+                port:
+                  number: 80
+# If TLS is needed, enable as appropriate (example):
+# tls:
+#   - hosts:
+#       - promotions.local
+#     secretName: promotions-tls

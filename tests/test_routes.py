@@ -395,6 +395,23 @@ class TestPromotionService(TestCase):
             names = {p["name"] for p in resp.get_json()}
             self.assertEqual(names, {"Expired", "Future"})
 
+    def test_health_endpoint_returns_ok(self):
+        """It should return 200 OK with {'status':'OK'} on GET /health"""
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.mimetype, "application/json")
+        data = resp.get_json()
+        self.assertIsInstance(data, dict)
+        self.assertEqual(data.get("status"), "OK")
+
+    def test_health_endpoint_idempotent_and_lightweight(self):
+        """It should be fast and not depend on DB (smoke: multiple quick calls) """
+        for _ in range(3):
+            resp = self.client.get("/health")
+            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            data = resp.get_json()
+            self.assertEqual(data.get("status"), "OK")
+
 
 ######################################################################
 #  S A D   P A T H S
