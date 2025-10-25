@@ -121,6 +121,30 @@ remove:	## Stop and remove the buildx builder
 	docker buildx stop
 	docker buildx rm
 
+# R4 BDD
+PORT ?= 8080
+BASE_URL ?= http://localhost:$(PORT)
+LOCAL_PORT ?= 8088
+.PHONY: bdd-setup run stop bdd pf
+bdd-setup: ## Install Chromium & chromedriver for headless BDD
+	@echo "Installing Chromium + chromedriver..."
+	sudo apt-get update
+	sudo apt-get install -y chromium chromium-driver fonts-liberation
+	-which chromium || which chromium-browser || true
+	-which chromedriver || true
+run: ## Run the app locally on PORT (default 8080)
+	@echo "Starting app on http://localhost:$(PORT)"
+	pipenv run gunicorn --bind 0.0.0.0:$(PORT) wsgi:app
+stop: ## Stop any process listening on PORT (default 8080)
+	@echo "Stopping process on :$(PORT) (if any) ..."
+	-ss -ltnp | awk '/:$(PORT)\b/{print $$7}' | cut -d',' -f1 | sed 's/[^0-9]//g' | xargs -r kill
+bdd: ## Run behave against BASE_URL (default http://localhost:$(PORT))
+	@echo "Running BDD against $(BASE_URL)"
+	BASE_URL=$(BASE_URL) behave
+pf: ## kubectl port-forward svc/promotions-service -> localhost:LOCAL_PORT
+	@echo "Port-forwarding svc/promotions-service 80 -> localhost:$(LOCAL_PORT)"
+	kubectl port-forward svc/promotions-service $(LOCAL_PORT):80
+
 .PHONY: verify
 verify: ## Smoke check the Kubernetes deployment (pods, service, ingress, HTTP)
 	@bash -eu -o pipefail -c '\

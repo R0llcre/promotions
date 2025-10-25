@@ -1,6 +1,6 @@
 # E2E Dry Run — Cluster → Build → Push → Deploy → Curl
 
-**Date:** 2025-10-20T16:12:06+00:00
+**Date:** 2025-10-25T01:49:21+00:00
 **Cluster:** nyu-devops
 **Namespace:** default
 
@@ -33,19 +33,19 @@ curl -i -H "Host: promotions.local" http://127.0.0.1:8080/promotions
 ### Pods
 ```
 NAME                                    READY   STATUS    RESTARTS   AGE   IP          NODE                     NOMINATED NODE   READINESS GATES
-promotions-deployment-8b467dd9b-bghpv   1/1     Running   0          25s   10.42.2.3   k3d-nyu-devops-agent-1   <none>           <none>
+promotions-deployment-8b467dd9b-cwtcj   1/1     Running   0          20s   10.42.2.3   k3d-nyu-devops-agent-1   <none>           <none>
 ```
 
 ### Service
 ```
 NAME                 TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
-promotions-service   ClusterIP   10.43.152.122   <none>        80/TCP    25s   app=promotions
+promotions-service   ClusterIP   10.43.217.210   <none>        80/TCP    20s   app=promotions
 ```
 
 ### Ingress
 ```
 NAME                 CLASS     HOSTS              ADDRESS                            PORTS   AGE
-promotions-ingress   traefik   promotions.local   172.19.0.2,172.19.0.3,172.19.0.4   80      25s
+promotions-ingress   traefik   promotions.local   172.19.0.2,172.19.0.3,172.19.0.4   80      20s
 ```
 
 <details>
@@ -53,7 +53,7 @@ promotions-ingress   traefik   promotions.local   172.19.0.2,172.19.0.3,172.19.0
 
 ```
 NAME                 CLASS     HOSTS              ADDRESS                            PORTS   AGE
-promotions-ingress   traefik   promotions.local   172.19.0.2,172.19.0.3,172.19.0.4   80      25s_DESCR
+promotions-ingress   traefik   promotions.local   172.19.0.2,172.19.0.3,172.19.0.4   80      20s_DESCR
 ```
 
 </details>
@@ -65,7 +65,7 @@ promotions-ingress   traefik   promotions.local   172.19.0.2,172.19.0.3,172.19.0
 HTTP/1.1 200 OK
 Content-Length: 16
 Content-Type: application/json
-Date: Mon, 20 Oct 2025 16:12:06 GMT
+Date: Sat, 25 Oct 2025 01:49:21 GMT
 Server: gunicorn
 
 {"status":"OK"}
@@ -76,7 +76,7 @@ Server: gunicorn
 HTTP/1.1 200 OK
 Content-Length: 3
 Content-Type: application/json
-Date: Mon, 20 Oct 2025 16:12:06 GMT
+Date: Sat, 25 Oct 2025 01:49:21 GMT
 Server: gunicorn
 
 []
