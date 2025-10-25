@@ -240,3 +240,229 @@ Ensure `pylint` is installed (e.g., `pip install pylint`) before running the scr
 
   * Use `DatabaseError` only for server‑side DB failures; continue to use `DataValidationError` for request validation errors (400).
   * Keep new error titles in Title Case and construct responses via `_error()` for consistency.
+
+
+## 2025-10-19 Fix `?active=false` filter
+
+### Fixed
+
+* **`GET /promotions?active=false` now correctly returns the “inactive” set** — promotions that are **not** active today (`today < start_date` **or** `today > end_date`). Previously, `active=false` was ignored or returned all results, causing ambiguity. Implemented in `service/routes.py::list_promotions()`. 
+
+### Added
+
+* **Strict parsing for `?active=`** in `list_promotions()`: accepts only `true/false/1/0/yes/no` (case-insensitive, trims spaces). Any other value returns **400 Bad Request** with a helpful message. 
+* **API tests** covering:
+
+  * `active=false` returns only inactive promotions (expired + not-yet-started),
+  * invalid values (e.g., `maybe`) produce **400**,
+  * truthy/falsy synonyms (`true/false/1/0/yes/no`) behave correctly.
+    Added to the REST test suite in `tests/test_routes.py`. 
+
+### Changed
+
+* **Active-window definition remains inclusive** (`start_date <= today <= end_date`) and continues to rely on `Promotion.find_active()`, ensuring route-layer behavior matches model-layer semantics. 
+
+### Notes for Integrators
+
+* Clients relying on permissive/ambiguous `?active=` values (e.g., `maybe`, `t`, `2`) will now receive **400**. Update callers to use one of: `true`, `false`, `1`, `0`, `yes`, `no`. 
+* No changes to other query priorities: `id > active > name > product_id > promotion_type > all`. Behavior is unchanged outside the `active` filter. 
+
+
+## 2025-10-20 — [K8S-01] Add application Dockerfile
+
+### Added
+
+* **Dockerfile (root)**: Production-grade image for the Flask service using `python:3.11-slim`, Pipenv (`--system --deploy`), and **Gunicorn** (`wsgi:app`) on port **8080**.
+* **`.dockerignore`**: Reduce build context (ignores VCS, caches, tests, etc.).
+
+### Changed
+
+* *None.* (Packaging only; no app or test code changes.)
+
+
+### Notes / How to verify
+
+```bash
+# Build
+docker build -t cluster-registry:5000/promotions:1.0 .
+
+# Run
+docker run --rm -p 8080:8080 cluster-registry:5000/promotions:1.0
+
+# Verify (expect 200 + service JSON)
+curl -i http://localhost:8080/
+```
+
+* CI remains green (lint/tests/coverage unchanged).
+* Unblocks: **K8S-02** (Makefile image name), **K8S-04/05/06** (Deployment/Service/Ingress), **K8S-03** (/health).
+
+
+## 2025-10-20 — [K8S-02] [K8S-03]
+
+### Added
+- **K8S-03:** Introduced `GET /health` endpoint for Kubernetes probes.  
+  Returns `{"status":"OK"}` with HTTP 200; intentionally lightweight and independent of external dependencies (e.g., DB) to keep liveness/readiness stable.
+- **K8S-03 (Tests):** Added unit tests for `/health`:
+  - Verifies HTTP 200, `application/json` mimetype, and payload `{"status":"OK"}`.
+  - Smoke test for idempotence/lightweight behavior (multiple quick calls).
+
+### Changed
+- **K8S-02:** Updated container image name in `Makefile`:
+  - `IMAGE_NAME` default changed from `petshop` ➜ `promotions`.
+  - Builds and pushes now target `cluster-registry:5000/promotions:1.0`.
+
+### Ops Notes
+- Suggested probe configuration (to be used in Deployment manifests):
+  ```yaml
+  readinessProbe:
+    httpGet: { path: /health, port: 8080 }
+    initialDelaySeconds: 5
+    periodSeconds: 5
+  livenessProbe:
+    httpGet: { path: /health, port: 8080 }
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  ```
+
+### Impact
+
+* **Build/Push:** Use `make build && make push` to produce and publish `cluster-registry:5000/promotions:1.0`.
+* **Runtime:** Probes can safely hit `/health` without flapping due to DB latency.
+
+### Verification
+
+* `pytest -q` passes with coverage unchanged (≥ existing threshold).
+* `docker run --rm -p 8080:8080 cluster-registry:5000/promotions:1.0`
+  `curl -i http://localhost:8080/health` → `200 OK` with `{"status":"OK"}`.
+
+
+## 2025-10-20 — Kubernetes Deployment Track [K8S-04] [K8S-05] [K8S-06] [K8S-07] [K8S-08] [K8S-09]
+
+### K8S-04 — Add Deployment for application
+
+**Added**
+
+* `k8s/deployment.yaml`: Application `Deployment` (`app: promotions`), container port **8080**, image `cluster-registry:5000/promotions:1.0`.
+* Probes: `readinessProbe` / `livenessProbe` targeting **`/health`** (from K8S-03).
+
+**Changed**
+
+* Env: `FLASK_ENV=production`, `PORT=8080`.
+* Temporary hard-coded `DATABASE_URI` to `postgres:5432` (superseded by Secret in K8S-09).
+
+---
+
+### K8S-05 — Add ClusterIP Service for application
+
+**Added**
+
+* `k8s/service.yaml`: `Service` (`name: promotions-service`, `type: ClusterIP`), **`port: 80 → targetPort: http`** (Pod named port maps to 8080).
+
+**Rationale**
+
+* Stable in-cluster endpoint for Ingress; isolates upstream from Pod changes.
+
+---
+
+### K8S-06 — Add Ingress (Traefik / K3D)
+
+**Added**
+
+* `k8s/ingress.yaml`: `Ingress` (`ingressClassName: traefik`, `host: promotions.local`, `path: /` → `promotions-service:80`).
+
+**Docs**
+
+* Access:
+
+  * Quick: `curl -H "Host: promotions.local" http://localhost:8080/...`
+  * Or add `127.0.0.1 promotions.local` to `/etc/hosts` (or use `*.nip.io`).
+
+---
+
+### K8S-07 — Add PostgreSQL StatefulSet (+ Headless Service)
+
+**Added**
+
+* `k8s/postgres/statefulset.yaml`:
+
+  * **Headless Service** `postgres-hl` (`clusterIP: None`) for stable identity.
+  * **StatefulSet** `postgres` (image `postgres:15-alpine`; `POSTGRES_DB=promotions`; PVC 1Gi).
+* Probes: `pg_isready` for readiness/liveness.
+
+**Fixed (CrashLoopBackOff root cause)**
+
+* Data/permissions issues on local paths:
+
+  * **Add** `PGDATA=/var/lib/postgresql/data/pgdata` to avoid `lost+found` at volume root.
+  * **Use only** `securityContext.fsGroup: 999` (remove `runAsUser/runAsGroup`) to fix initdb permissions.
+* Probe tuning: `pg_isready -h 127.0.0.1 -p 5432 -U postgres -d promotions` with forgiving delays.
+
+**Docs**
+
+* If partial init left bad data, **demo-only** reset: scale sts→delete PVC→scale up.
+
+---
+
+### K8S-08 — Add PostgreSQL ClusterIP Service (app-facing)
+
+**Added**
+
+* `k8s/postgres/service.yaml`: DB `Service` (`name: postgres`, `type: ClusterIP`, `port: 5432 → targetPort: postgres`).
+
+**Rationale**
+
+* Stable app connection endpoint, decoupled from Headless Service; matches `DATABASE_URI` host (`postgres`).
+
+---
+
+### K8S-09 — Harden app bootstrap & move DB URI to Secret
+
+**Added**
+
+* `k8s/secrets/promotions-db.yaml`: `Secret promotions-db` with `stringData.DATABASE_URI=postgresql+psycopg://postgres:postgres@postgres:5432/promotions`.
+
+**Changed**
+
+* `k8s/deployment.yaml`:
+
+  * Switch `env.DATABASE_URI` to `valueFrom.secretKeyRef` (no credentials in spec).
+  * **Add** `initContainers.wait-for-postgres` (loop `pg_isready` before app starts).
+  * Keep `/health` probes unchanged.
+
+**Outcome**
+
+* Eliminates “app starts before DB” CrashLoop scenario; improves first-boot/rollout stability and credential hygiene.
+
+---
+
+### Impact & Compatibility
+
+* **Runtime**: No API contract changes; `/health` already present (K8S-03).
+* **Order of operations**: **DB (K8S-07/08) → Secret (K8S-09) → Deployment (K8S-04 updated) → Service (K8S-05) → Ingress (K8S-06)**.
+* **DevContainer note (images)**: If `cluster-registry` isn’t resolvable, prefer `k3d image import` to load images directly into the cluster.
+
+---
+
+### File inventory (added/modified)
+
+**Added**
+
+* `k8s/deployment.yaml` (K8S-04)
+* `k8s/service.yaml` (K8S-05)
+* `k8s/ingress.yaml` (K8S-06)
+* `k8s/postgres/statefulset.yaml` (K8S-07)
+* `k8s/postgres/service.yaml` (K8S-08)
+* `k8s/secrets/promotions-db.yaml` (K8S-09)
+
+**Modified**
+
+* `k8s/postgres/statefulset.yaml` (K8S-07: add `PGDATA`, `fsGroup`, probe tuning)
+* `k8s/deployment.yaml` (K8S-09: `secretKeyRef` + `initContainer`)
+
+**Done criteria**
+
+* `kubectl get pods`: `postgres-0` and app Pod **READY 1/1**
+* `curl -H "Host: promotions.local" http://localhost:8080/health` → **200 + {"status":"OK"}**
+* App can read/write DB via `/promotions` APIs
+
+**Breaking changes**: None.

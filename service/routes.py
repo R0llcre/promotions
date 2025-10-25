@@ -26,10 +26,27 @@ from datetime import date, timedelta
 
 # Third-party
 from flask import abort, current_app as app, jsonify, request, url_for
+from sqlalchemy import or_
 
 # First-party
 from service.common import status  # HTTP status codes
 from service.models import DataValidationError, Promotion
+
+
+def _parse_bool_strict(value: str):
+    """
+    Strictly parse query-string boolean.
+    Accepted (case-insensitive, trimmed):
+      True:  'true', '1', 'yes'
+      False: 'false', '0', 'no'
+    Others: return None (caller should raise 400)
+    """
+    v = str(value).strip().lower()
+    if v in {"true", "1", "yes"}:
+        return True
+    if v in {"false", "0", "no"}:
+        return False
+    return None
 
 
 ######################################################################
@@ -56,7 +73,10 @@ def index():
 
 # Supported query params:
 # ?id=<int>              -> single record as [ ... ] or []
-# ?active=true           -> list of promotions active "today" (server date)
+# ?active=<bool>         -> true =>  active today (inclusive)
+#                           false => inactive today (start_date > today OR end_date < today)
+#                           Accepted: true/false/1/0/yes/no (case-insensitive)
+#                           Invalid => 400
 # ?name=<str>            -> exact match list
 # ?product_id=<int>      -> exact match list
 # ?promotion_type=<str>  -> exact match list
@@ -72,18 +92,43 @@ def list_promotions():
     app.logger.info("Request to list Promotions")
 
     promotion_id = request.args.get("id")
-    active = request.args.get("active")
+    active_raw = request.args.get("active")
     name = request.args.get("name")
     product_id = request.args.get("product_id")
     ptype = request.args.get("promotion_type")
 
+    # 1) by id
     if promotion_id:
         app.logger.info("Filtering by id=%s", promotion_id)
         p = Promotion.find(promotion_id)
         promotions = [p] if p else []
-    elif active and str(active).lower() == "true":
-        app.logger.info("Filtering by active promotions (server date)")
-        promotions = Promotion.find_active()
+
+    # 2) by active (strict)
+    elif active_raw is not None:
+        active = _parse_bool_strict(active_raw)
+        if active is None:
+            abort(
+                status.HTTP_400_BAD_REQUEST,
+                (
+                    "Invalid value for query parameter 'active'. "
+                    "Accepted: true, false, 1, 0, yes, no (case-insensitive). "
+                    f"Received: {active_raw!r}"
+                ),
+            )
+
+        today = date.today()
+        if active is True:
+            app.logger.info("Filtering by active promotions (inclusive)")
+            promotions = Promotion.find_active()  # start_date <= today <= end_date  (model)  # noqa
+        else:
+            app.logger.info("Filtering by inactive promotions (not active today)")
+            promotions = list(
+                Promotion.query.filter(
+                    or_(Promotion.start_date > today, Promotion.end_date < today)
+                ).all()
+            )
+
+    # 3+) the rest
     elif name:
         app.logger.info("Filtering by name=%s", name)
         promotions = Promotion.find_by_name(name.strip())
@@ -243,3 +288,20 @@ def check_content_type(content_type: str):
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             f"Content-Type must be {content_type}; received {got}",
         )
+
+
+######################################################################
+# Endpoint: /health (K8s liveness/readiness)
+######################################################################
+@app.route("/health", methods=["GET"])
+def health():
+    """
+    K8s health check endpoint
+    Returns:
+        JSON: {"status": "OK"} with HTTP 200
+    Notes:
+        - Keep this endpoint lightweight and independent of external deps (e.g., DB)
+          so that liveness/readiness probes are stable .
+    """
+    app.logger.info("Health check requested")
+    return jsonify(status="OK"), status.HTTP_200_OK
