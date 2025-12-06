@@ -127,7 +127,7 @@ spec:
           echo "Found Pipfile file: using pipenv ..."
           python -m pip install --upgrade pip pipenv
           pipenv install --system --dev
-        elif -e "requirements.txt" ]; then
+        elif [ -e "requirements.txt" ]; then
           python -m pip install --user -r requirements.txt
         fi
 
@@ -177,7 +177,7 @@ spec:
           #!/bin/bash
           set -e
 
-          echo Applying manifests in $(inputs.params.manifest-dir) directory
+          echo Applying manifests in $(params.manifest-dir) directory
 
           echo "**********************************************************************"
           echo "Installing YQ..."
@@ -186,16 +186,16 @@ spec:
           chmod a+x /usr/bin/yq
 
           echo "*********************  DEPLOYMENT  ***********************"
-          echo "Deploying $(inputs.params.image-name) ..."
+          echo "Deploying $(params.image-name) ..."
 
-          yq -e -i '.spec.template.spec.containers[0].image="$(inputs.params.image-name)"' $(inputs.params.manifest-dir)/deployment.yaml
-          cat $(inputs.params.manifest-dir)/deployment.yaml
+          yq -e -i '.spec.template.spec.containers[0].image="$(params.image-name)"' $(params.manifest-dir)/deployment.yaml
+          cat $(params.manifest-dir)/deployment.yaml
 
           echo "************************************************************"
           echo "OC APPLY..."
-          oc apply -f $(inputs.params.manifest-dir)/deployment.yaml
-          oc apply -f $(inputs.params.manifest-dir)/service.yaml
-          oc apply -f $(inputs.params.manifest-dir)/route.yaml 2>/dev/null || echo "No route.yaml found"
+          oc apply -f $(params.manifest-dir)/deployment.yaml
+          oc apply -f $(params.manifest-dir)/service.yaml
+          oc apply -f $(params.manifest-dir)/route.yaml 2>/dev/null || echo "No route.yaml found"
 
           echo "************************************************************"
           sleep 3
@@ -233,8 +233,8 @@ spec:
       command: ["/bin/bash", "-c"]
       args:
         - |-
-          echo Applying manifests in $(inputs.params.manifest-dir) directory
-          oc apply -f $(inputs.params.manifest-dir)
+          echo Applying manifests in $(params.manifest-dir) directory
+          oc apply -f $(params.manifest-dir)
           echo -----------------------------------
 
 ---

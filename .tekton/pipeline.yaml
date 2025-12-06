@@ -3,30 +3,36 @@ kind: Pipeline
 metadata:
   name: cd-pipeline
 spec:
+  description: >
+    CI/CD pipeline for Promotions: clone -> lint/test (parallel) -> build image -> deploy -> BDD.
   params:
+    - name: APP_NAME
+      type: string
+      default: promotions
+      description: Application name used for image and manifests
     - name: GIT_REPO
       type: string
-      description: The URL to the git repo
+      description: Repository URL to clone
     - name: GIT_REF
       type: string
-      description: The reference (branch or ref)
       default: master
-    - name: IMAGE_NAME
-      type: string
-      description: The name of the image to build
-      default: promotions
+      description: Git reference (branch/SHA) to build
     - name: IMAGE_TAG
       type: string
-      description: The tag for the image
       default: latest
+      description: Tag for the built image
+    - name: BASE_URL
+      type: string
+      default: https://promotions.apps.example.com
+      description: Route URL of the deployed service for BDD tests
 
   workspaces:
     - name: pipeline-workspace
 
   tasks:
-    ######################################################
-    # git-clone task
-    ######################################################
+    # -----------------------------
+    # 1) Clone source
+    # -----------------------------
     - name: git-clone
       taskRef:
         resolver: cluster
@@ -44,24 +50,16 @@ spec:
           value: $(params.GIT_REF)
         - name: DELETE_EXISTING
           value: "true"
-        - name: VERBOSE
-          value: "false"
-        - name: SSL_VERIFY
-          value: "true"
         - name: DEPTH
           value: "1"
-        - name: SUBDIRECTORY
-          value: ""
-        - name: USER_HOME
-          value: /home/git
       workspaces:
         - name: output
           workspace: pipeline-workspace
 
-    ######################################################
-    # lint task (runs parallel with test)
-    ######################################################
-    - name: lint
+    # -----------------------------
+    # 2a) Lint (parallel)
+    # -----------------------------
+    - name: pylint
       taskRef:
         name: pylint
       runAfter:
@@ -70,35 +68,92 @@ spec:
         - name: path
           value: service
         - name: args
-          value: ["--max-line-length=127"]
+          value:
+            - --max-line-length=127
       workspaces:
         - name: source
           workspace: pipeline-workspace
 
-    ######################################################
-    # test task (runs parallel with lint)
-    ######################################################
-
-    ######################################################
-    # build task
-    ######################################################
-    - name: build
+    # -----------------------------
+    # 2b) Tests (parallel)
+    # -----------------------------
+    - name: pytest
       taskRef:
-        name: pybuild
+        name: pytest-env
       runAfter:
-        - test
+        - git-clone
       params:
-        - name: path
-          value: service
-        - name: args
-          value: ["--max-line-length=127"]
+        - name: pytest-args
+          value:
+            - --pspec
+            - --cov=service
+            - --cov-fail-under=95
+            - --disable-warnings
       workspaces:
         - name: source
           workspace: pipeline-workspace
-    ######################################################
-    # deploy task
-    ######################################################
 
-    ######################################################
-    # behave task
-    ######################################################
+    # -----------------------------
+    # 3) Build image (after lint+test)
+    # -----------------------------
+    - name: buildah
+      runAfter:
+        - pylint
+        - pytest
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.APP_NAME):$(params.IMAGE_TAG)
+        - name: DOCKERFILE
+          value: ./Dockerfile
+        - name: CONTEXT
+          value: .
+        - name: TLSVERIFY
+          value: "true"
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+
+    # -----------------------------
+    # 4) Deploy (apply manifests)
+    # -----------------------------
+    - name: deploy
+      taskRef:
+        name: deploy-latest
+      runAfter:
+        - buildah
+      params:
+        - name: image
+          value: image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.APP_NAME):$(params.IMAGE_TAG)
+        - name: manifest-dir
+          value: k8s
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+
+    # -----------------------------
+    # 5) BDD (post-deploy)
+    # -----------------------------
+    - name: behave
+      taskRef:
+        name: behave
+      runAfter:
+        - deploy
+      params:
+        - name: base-url
+          value: $(params.BASE_URL)
+        - name: wait-seconds
+          value: "90"
+        - name: driver
+          value: chrome
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
