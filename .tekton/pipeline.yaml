@@ -78,27 +78,68 @@ spec:
     ######################################################
     # test task (runs parallel with lint)
     ######################################################
-
+    - name: test
+      taskRef:
+        name: pytest-env
+      runAfter:
+        - git-clone
+      params:
+        - name: pytest-args
+          value:
+            - "--cov=service"
+            - "--cov-fail-under=95"
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
     ######################################################
     # build task
     ######################################################
     - name: build
-      taskRef:
-        name: pybuild
       runAfter:
+        - lint
         - test
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
       params:
-        - name: path
-          value: service
-        - name: args
-          value: ["--max-line-length=127"]
+        - name: IMAGE
+          value: $(params.IMAGE_NAME)
       workspaces:
         - name: source
           workspace: pipeline-workspace
     ######################################################
     # deploy task
     ######################################################
-
+    - name: deploy
+      taskRef:
+        name: deploy-image
+      runAfter:
+        - build
+      params:
+        - name: image-name
+          value: "$(params.IMAGE_NAME)"
+        - name: manifest-dir
+          value: k8s
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
     ######################################################
     # behave task
     ######################################################
+    - name: behave
+      taskRef:
+        name: behave
+      runAfter:
+        - deploy
+      params:
+        - name: base-url
+          value: "http://promotions-service.$(context.pipelineRun.namespace).svc.cluster.local"
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace

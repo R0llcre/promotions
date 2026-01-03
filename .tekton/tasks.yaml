@@ -127,7 +127,7 @@ spec:
           echo "Found Pipfile file: using pipenv ..."
           python -m pip install --upgrade pip pipenv
           pipenv install --system --dev
-        elif -e "requirements.txt" ]; then
+        elif -e [ "requirements.txt" ]; then
           python -m pip install --user -r requirements.txt
         fi
 
@@ -177,6 +177,10 @@ spec:
           #!/bin/bash
           set -e
 
+          MANIFEST_DIR="$(inputs.params.manifest-dir)"
+          IMAGE_NAME="$(inputs.params.image-name)"
+
+
           echo Applying manifests in $(inputs.params.manifest-dir) directory
 
           echo "**********************************************************************"
@@ -188,8 +192,11 @@ spec:
           echo "*********************  DEPLOYMENT  ***********************"
           echo "Deploying $(inputs.params.image-name) ..."
 
-          yq -e -i '.spec.template.spec.containers[0].image="$(inputs.params.image-name)"' $(inputs.params.manifest-dir)/deployment.yaml
-          cat $(inputs.params.manifest-dir)/deployment.yaml
+          yq -e -i '.spec.template.spec.containers[0].image="'"$IMAGE_NAME"'"' $MANIFEST_DIR/deployment.yaml
+          cat $MANIFEST_DIR/deployment.yaml
+
+          DEPLOY_NAME=$(yq '.metadata.name' $MANIFEST_DIR/deployment.yaml)
+          echo "Detected Deployment: $DEPLOY_NAME"
 
           echo "************************************************************"
           echo "OC APPLY..."
@@ -198,7 +205,10 @@ spec:
           oc apply -f $(inputs.params.manifest-dir)/route.yaml 2>/dev/null || echo "No route.yaml found"
 
           echo "************************************************************"
-          sleep 3
+          echo "Waiting for $DEPLOY_NAME to be ready..."
+
+          oc rollout status deployment/$DEPLOY_NAME --timeout=300s
+
           echo "Pods:"
           oc get pods
           echo ""

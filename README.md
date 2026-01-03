@@ -15,14 +15,23 @@ This service provides a robust and consistent API for CRUD operations and queryi
 
 ## Key Features
 
+### Backend & API
 *   **Predictable API**: Easy to integrate with consistent behavior and clear filtering.
 *   **Data Integrity**: Ensures valid data entry and reliable, atomic transactions.
 *   **Flexible Management**: Safely deactivate promotions while preserving history.
 *   **High Availability**: Designed for robust operation in cloud environments.
 
+### Modern Web UI
+*   **Interactive Dashboard**: Real-time statistics with gradient cards showing active promotions, expiring campaigns, and type distribution charts (Chart.js).
+*   **Dual View Modes**: Seamlessly switch between table view and modern card gallery view.
+*   **Card Gallery View**: Responsive grid layout with image previews, hover animations, and intuitive action buttons.
+*   **Advanced Filtering**: Multi-level filtering system with search, status pills, type dropdowns, and product ID filters.
+*   **Responsive Design**: Bootstrap 5-powered UI optimized for desktop and mobile devices.
+
 ## Technology Stack
 
 *   **Backend**: Python, Flask, Flask-SQLAlchemy
+*   **Frontend**: Bootstrap 5, Vanilla JavaScript (ES6 Modules), Chart.js, Font Awesome
 *   **Database**: PostgreSQL
 *   **Containerization**: Docker
 *   **CI/CD**: GitHub Actions, Tekton Pipelines (OpenShift)
@@ -103,6 +112,38 @@ For detailed instructions, see [Deployment Guide](docs/DEPLOYMENT.md).
     -d '{"name":"Black Friday","promotion_type":"PERCENT","value":25,"product_id":123,"start_date":"2025-11-01","end_date":"2025-11-30"}'
   ```
 
+## Web UI Features
+
+Access the web interface at `http://localhost:8080/` to explore:
+
+### Dashboard Statistics
+*   **Active Promotions Card**: Track currently running campaigns with gradient background
+*   **Expiring Soon Card**: Monitor promotions ending within 7 days
+*   **Type Distribution Chart**: Visual breakdown of promotion types using Chart.js doughnut chart
+
+### View Modes
+*   **Table View**: Classic data table with sortable columns and inline actions
+*   **Card Gallery View**: Modern card-based layout featuring:
+    *   Image preview support (optional `img_url` field)
+    *   Responsive grid layout (auto-adjusts to screen size)
+    *   Hover effects with smooth animations
+    *   Action buttons (Edit, Deactivate, Delete) appearing on hover
+    *   Date range badges and status indicators
+
+### Filtering & Search
+*   **Search Bar**: Full-text search across promotion names
+*   **Status Pills**: Quick filter by All / Active / Inactive
+*   **Type Dropdown**: Filter by PERCENT / DISCOUNT / BOGO
+*   **Product ID Filter**: Search by specific product
+*   **Results Counter**: Real-time count of filtered promotions
+
+### CRUD Operations
+All operations available through intuitive modals:
+*   **Create**: Add new promotions with validation
+*   **Update**: Edit existing promotions
+*   **Deactivate**: Soft-delete with confirmation
+*   **Delete**: Permanent removal with warning
+
 ---
 
 ## Documentation
@@ -129,9 +170,12 @@ For detailed instructions, see [Deployment Guide](docs/DEPLOYMENT.md).
 │   ├── common/         # Shared utilities (logs, error handlers)
 │   ├── models.py       # Database models
 │   ├── routes.py       # API endpoints
-│   └── static/         # Frontend assets (HTML/CSS/JS)
+│   └── static/         # Frontend assets
+│       ├── index.html  # Main web UI (Dashboard, Card/Table views)
+│       ├── css/        # Custom styles (card view, filters, animations)
+│       └── js/         # ES6 modules (app.js, ui.js, api.js, utils.js)
 ├── tests/              # Unit and integration tests (Pytest)
-├── .tekton/            # Tekton CI/CD pipeline definitions (hidden dir)
+├── .tekton/            # Tekton CI/CD pipeline definitions
 ├── check_syntax.py     # Syntax checker script
 ├── Dockerfile          # Container definition
 ├── Makefile            # Command automation

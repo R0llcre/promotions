@@ -216,14 +216,42 @@ def step_impl(context: Any, name: str) -> None:
             context.browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
             time.sleep(0.3)
             button.click()
-            # Accept confirmation dialog
-            alert = WebDriverWait(context.browser, context.wait_seconds).until(
-                expected_conditions.alert_is_present()
-            )
-            alert.accept()
+            time.sleep(0.5)  # Wait for modal to appear
             return
 
     raise AssertionError(f"Deactivate button for '{name}' not found")
+
+
+@then('I should see the deactivate confirmation modal')
+def step_impl(context: Any) -> None:
+    """Verify the deactivate confirmation modal is visible"""
+    modal = WebDriverWait(context.browser, context.wait_seconds).until(
+        expected_conditions.visibility_of_element_located((By.ID, "deactivateModal"))
+    )
+    assert modal.is_displayed(), "Deactivate confirmation modal is not visible"
+
+    # Verify the modal shows the correct promotion name
+    modal_name = context.browser.find_element(By.ID, "deactivatePromotionName").text
+    logging.info(f"Deactivate modal is showing for: {modal_name}")
+
+
+@when('I confirm the deactivation')
+def step_impl(context: Any) -> None:
+    """Click the confirm deactivate button in the modal"""
+    import time
+
+    confirm_button = WebDriverWait(context.browser, context.wait_seconds).until(
+        expected_conditions.element_to_be_clickable((By.ID, "confirmDeactivate"))
+    )
+    confirm_button.click()
+
+    # Wait for modal to close
+    WebDriverWait(context.browser, context.wait_seconds).until(
+        expected_conditions.invisibility_of_element_located((By.ID, "deactivateModal"))
+    )
+
+    # Wait for table to update
+    time.sleep(1.0)
 
 
 @then('the end date for "{name}" should be yesterday in the promotions table')

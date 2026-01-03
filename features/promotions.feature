@@ -49,6 +49,8 @@ Feature: Promotions Admin UI
     When I visit the "Home Page"
     Then I should see the promotions table updated with "Spring Sale"
     When I click the deactivate button for "Spring Sale"
+    Then I should see the deactivate confirmation modal
+    When I confirm the deactivation
     Then the end date for "Spring Sale" should be yesterday in the promotions table
 
   Scenario: Filter promotions by Active status

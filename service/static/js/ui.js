@@ -91,7 +91,8 @@ export function renderCards(items) {
     if (p.promotion_type === "DISCOUNT") typeBadgeClass = "badge-soft-danger";
     const typeHtml = '<span class="badge ' + typeBadgeClass + '">' + type + "</span>";
 
-    const imageUrl = "https://picsum.photos/seed/" + (p.product_id || p.id) + "/400/260";
+    // Use database img_url if available, otherwise fall back to picsum placeholder
+    const imageUrl = p.img_url || "https://picsum.photos/seed/" + (p.product_id || p.id) + "/400/260";
 
     card.innerHTML = [
       '<div class="promo-card-img-container">',

@@ -59,6 +59,7 @@ def load_data():
             "promotion_type": "PERCENT",
             "value": 20,
             "product_id": 101,
+            "img_url": "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=30)).isoformat()
         },
@@ -67,6 +68,7 @@ def load_data():
             "promotion_type": "PERCENT",
             "value": 50,
             "product_id": 102,
+            "img_url": "https://images.unsplash.com/photo-1607082349566-187342175e2f",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=7)).isoformat()
         },
@@ -75,6 +77,7 @@ def load_data():
             "promotion_type": "PERCENT",
             "value": 30,
             "product_id": 103,
+            "img_url": "https://images.unsplash.com/photo-1483985988355-763728e1935b",
             "start_date": (today - timedelta(days=10)).isoformat(),
             "end_date": (today + timedelta(days=20)).isoformat()
         },
@@ -84,6 +87,7 @@ def load_data():
             "promotion_type": "DISCOUNT",
             "value": 10,
             "product_id": 201,
+            "img_url": "https://images.unsplash.com/photo-1513885535751-8b9238bd345a",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=15)).isoformat()
         },
@@ -92,6 +96,7 @@ def load_data():
             "promotion_type": "DISCOUNT",
             "value": 25,
             "product_id": 202,
+            "img_url": "https://images.unsplash.com/photo-1441986300917-64674bd600d8",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=60)).isoformat()
         },
@@ -100,6 +105,7 @@ def load_data():
             "promotion_type": "DISCOUNT",
             "value": 5,
             "product_id": 203,
+            "img_url": "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=3)).isoformat()
         },
@@ -109,6 +115,7 @@ def load_data():
             "promotion_type": "BOGO",
             "value": 1,
             "product_id": 301,
+            "img_url": "https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=14)).isoformat()
         },
@@ -117,6 +124,7 @@ def load_data():
             "promotion_type": "BOGO",
             "value": 50,
             "product_id": 302,
+            "img_url": "https://images.unsplash.com/photo-1523275335684-37898b6baf30",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=21)).isoformat()
         },
@@ -125,6 +133,7 @@ def load_data():
             "promotion_type": "BOGO",
             "value": 1,
             "product_id": 303,
+            "img_url": "https://images.unsplash.com/photo-1491553895911-0055eca6402d",
             "start_date": (today - timedelta(days=5)).isoformat(),
             "end_date": (today + timedelta(days=2)).isoformat()
         },
@@ -134,6 +143,7 @@ def load_data():
             "promotion_type": "PERCENT",
             "value": 25,
             "product_id": 401,
+            "img_url": "https://images.unsplash.com/photo-1445205170230-053b83016050",
             "start_date": (today - timedelta(days=60)).isoformat(),
             "end_date": (today - timedelta(days=30)).isoformat()
         },
@@ -142,6 +152,7 @@ def load_data():
             "promotion_type": "DISCOUNT",
             "value": 15,
             "product_id": 402,
+            "img_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f",
             "start_date": (today - timedelta(days=45)).isoformat(),
             "end_date": (today - timedelta(days=15)).isoformat()
         },

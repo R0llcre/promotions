@@ -105,11 +105,13 @@ function initCreateModal() {
     this.classList.add("was-validated");
     if (!this.checkValidity()) return;
 
+    const imgUrlValue = ($id("inputImgUrl").value || "").trim();
     const payload = {
       name: ($id("inputName").value || "").trim(),
       promotion_type: ($id("inputType").value || "").trim(),
       value: Number($id("inputValue").value),
       product_id: parseInt($id("inputProductId").value, 10) || null,
+      img_url: imgUrlValue || null,
       start_date: normalizeDateInput($id("inputStart").value),
       end_date: normalizeDateInput($id("inputEnd").value),
     };
@@ -168,25 +170,35 @@ function initDeleteModal() {
   });
 }
 
-function initDeactivateAction() {
-  document.addEventListener("click", async function (e) {
-    const btn = e.target.closest(".deactivate-btn");
-    if (!btn) return;
+function initDeactivateModal() {
+  const deactivateModalEl = $id("deactivateModal");
+  const deactivateModal = bootstrap.Modal.getOrCreateInstance(deactivateModalEl);
+  let currentDeactivateId = null;
 
-    const id = btn.dataset.id;
-    const name = btn.dataset.name || "this promotion";
-    if (!window.confirm('Deactivate "' + name + '"?')) return;
+  document.addEventListener("click", function (e) {
+    const deactivateBtn = e.target.closest(".deactivate-btn");
+    if (deactivateBtn) {
+      currentDeactivateId = deactivateBtn.dataset.id;
+      $id("deactivatePromotionId").textContent = currentDeactivateId;
+      $id("deactivatePromotionName").textContent = deactivateBtn.dataset.name;
+      deactivateModal.show();
+    }
+  });
 
-    btn.disabled = true;
+  $id("confirmDeactivate")?.addEventListener("click", async function () {
+    if (!currentDeactivateId) return;
+    this.disabled = true;
     try {
-      await deactivatePromotion(id);
+      await deactivatePromotion(currentDeactivateId);
+      deactivateModal.hide();
       showSuccessToast("Promotion deactivated");
       loadAndRender();
     } catch (err) {
       console.error("Deactivate failed:", err);
       alert("Failed to deactivate promotion: " + err.message);
     } finally {
-      btn.disabled = false;
+      this.disabled = false;
+      currentDeactivateId = null;
     }
   });
 }
@@ -207,6 +219,7 @@ function initEditModal() {
         $id("editType").value = promotion.promotion_type || "";
         $id("editValue").value = promotion.value ?? "";
         $id("editProductId").value = promotion.product_id ?? "";
+        $id("editImgUrl").value = promotion.img_url || "";
         $id("editStart").value = formatDateShort(promotion.start_date) || "";
         $id("editEnd").value = formatDateShort(promotion.end_date) || "";
         editModal.show();
@@ -221,11 +234,13 @@ function initEditModal() {
     this.classList.add("was-validated");
     if (!this.checkValidity() || !currentEditId) return;
 
+    const imgUrlValue = ($id("editImgUrl").value || "").trim();
     const payload = {
       name: ($id("editName").value || "").trim(),
       promotion_type: ($id("editType").value || "").trim(),
       value: Number($id("editValue").value),
       product_id: parseInt($id("editProductId").value, 10) || null,
+      img_url: imgUrlValue || null,
       start_date: normalizeDateInput($id("editStart").value),
       end_date: normalizeDateInput($id("editEnd").value),
     };
@@ -352,7 +367,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initViewSwitcher();
   initCreateModal();
   initDeleteModal();
-  initDeactivateAction();
+  initDeactivateModal();
   initEditModal();
   initFilters();
 });
